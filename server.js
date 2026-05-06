@@ -3,52 +3,32 @@
 /**
  * server.js – Monoprice 10761 RS-232 Web Controller
  *
- * PROTOCOL REFERENCE (model 10761, 9600 8-N-1):
- *   Query zone status  : ?1<Z>\r           Z = 1-6 (single digit zone number)
- *   (Some firmware docs show ZZ = 11-16 but the confirmed working format is ?1<Z>)
- *   Response example   : >1100010000xxxxxx\r\n
- *     Positions (0-based in the data portion after '>'):
- *       [0-1] controller+zone id  e.g. "11"
- *       [2-3] public address (PA) flag
- *       [4-5] power  (PR)  00=off 01=on
- *       [6-7] mute   (MU)  00/01
- *       [8-9] do not disturb (DT)
- *       [10-11] volume (VO)  00-38
- *       [12-13] treble (TR)
- *       [14-15] bass   (BS)
- *       [16-17] balance(BL)
- *       [18-19] source (CH)  01-06
- *       [20-21] keypad flag (LS)
+ * CONFIRMED PROTOCOL (9600 8-N-1):
+ *   Commands are terminated with \n (newline), NOT \r.
+ *   Sending \r causes "Command Error." from the amp.
  *
- *   Set power  : <1<ZZ>PR<00|01>\r
- *   Set source : <1<ZZ>CH<01-06>\r
- *   Set volume : <1<ZZ>VO<00-38>\r
+ *   Query  : ?1<Z>\n          Z = zone 1-6  e.g. "?11\n"
+ *   Set pwr: <1<Z>PR<00|01>\n
+ *   Set src: <1<Z>CH<01-06>\n
+ *   Set vol: <1<Z>VO<00-38>\n
  *
- *   NOTE: The amp echoes every command byte back before sending the response.
- *         We drain the echo and then read the actual reply line.
+ *   Response: amp echoes command, sends '#' prompt, then reply starting with '>'.
+ *   Full raw receive example: "?11\n#>1100000000111111100401"
  *
- *   If your firmware returns zone numbers as single digits (1-6 instead of
- *   11-16), change ZONE_PREFIX below from '' to '' and adjust zoneId().
+ *   We accumulate raw bytes and scan for '>' to extract the response.
  */
 
 const express = require('express');
 const path    = require('path');
 const { SerialPort } = require('serialport');
-const { ReadlineParser } = require('@serialport/parser-readline');
 
-// ─── Configuration ────────────────────────────────────────────────────────────
 const PORT        = parseInt(process.env.PORT || '3000', 10);
-const SERIAL_PATH = process.env.SERIAL_PATH || '/dev/ttyUSB0';
+const SERIAL_PATH = process.env.SERIAL_PATH   || '/dev/ttyUSB0';
 const BAUD_RATE   = 9600;
+const CONTROLLER_ID = 1;   // change to 2/3 for chained units
+const REPLY_TIMEOUT = 3000; // ms
 
-/**
- * The 10761 uses a two-digit zone identifier where the first digit is the
- * controller number (1) and the second is the zone (1-6), giving 11-16.
- * Change CONTROLLER_ID if you have chained controllers (1,2,3...).
- */
-const CONTROLLER_ID = 1;
-
-// ─── Serial port setup ────────────────────────────────────────────────────────
+// ── Serial port (raw Buffer mode – no parser) ─────────────────────────────────
 const serial = new SerialPort({
   path:     SERIAL_PATH,
   baudRate: BAUD_RATE,
@@ -58,268 +38,233 @@ const serial = new SerialPort({
   autoOpen: false,
 });
 
-// The 10761 terminates responses with \r only (not \r\n).
-// Using \r\n as delimiter means the parser never fires → timeout.
-const parser = serial.pipe(new ReadlineParser({ delimiter: '\n' }));
-
-// Queue so we never interleave serial transactions
+// One transaction at a time
 let serialQueue = Promise.resolve();
 
-/**
- * Build the zone identifier string used in every command.
- *
- * The 10761 uses a SINGLE zone digit (1-6) prefixed by the controller ID.
- * Full command prefix is therefore: <controllerId><zone>
- *   e.g. Controller 1, Zone 1 → "11"  (used as ?1<11>  → "?111" ← WRONG on some firmware)
- *        Controller 1, Zone 1 → "1"   (used as ?1<1>   → "?11"  ← CORRECT)
- *
- * If your amp responds to ?111 use: return `${CONTROLLER_ID}${zone}`;
- * If your amp responds to ?11  use: return `${zone}`;   ← DEFAULT (confirmed working)
- */
+// ── Zone ID helper ────────────────────────────────────────────────────────────
+// Confirmed: ?1<Z> single-digit zone (1-6)  e.g. "?11" for zone 1
+// Change to `${CONTROLLER_ID}${zone}` if your firmware uses 11-16 format.
 function zoneId(zone) {
-  // Confirmed working format: ?1<zone> where zone is a single digit 1-6
   return `${zone}`;
 }
 
+// ── Core serial transaction ───────────────────────────────────────────────────
 /**
  * sendCommand(cmd) → Promise<string>
- * Writes `cmd + \r` to the serial port, discards the echo, and resolves with
- * the first non-empty, non-echo line returned by the amp.
  *
- * The 10761 echoes every sent byte.  A status query reply starts with '>'.
- * A set-command acknowledgement also starts with '>'.  We wait up to
- * REPLY_TIMEOUT ms for a line starting with '>'.
+ * Writes cmd + \n (CONFIRMED working terminator for 10761).
+ * Accumulates all incoming bytes and resolves with the first line
+ * starting with '>' — immune to echo, '#' prompts, and extra bytes.
  */
-const REPLY_TIMEOUT = 2000; // ms
-
 function sendCommand(cmd) {
-  // Serialise access – one transaction at a time
   serialQueue = serialQueue.then(() => _doSend(cmd));
   return serialQueue;
 }
 
 function _doSend(cmd) {
   return new Promise((resolve, reject) => {
-    const raw = cmd + '\n'; // The amp accepts either \r or \n as command terminator; we use \n for easier parsing.
-    let   timer;
+    let buf = '';
+    let timer;
 
-    const onData = (line) => {
-      line = line.trim();
-      // The amp echoes the command back, then sends a '#' prompt character,
-      // then sends the real response starting with '>'.
-      // Skip: empty lines, the '#' prompt, and any echo lines.
-      if (!line || line === '#' || !line.startsWith('>')) return;
-      cleanup();
-      resolve(line);
-    };
+    function onData(chunk) {
+      buf += chunk.toString('ascii');
 
-    const onError = (err) => { cleanup(); reject(err); };
+      // Scan for response: starts with '>'
+      const start = buf.indexOf('>');
+      if (start === -1) return; // not yet received
+
+      // Grab everything from '>' to end of current buffer
+      // (response may not have a clean terminator – grab what we have
+      //  once we see '>' and the buffer stops growing, or hits \r or \n)
+      const rest = buf.slice(start);
+      const end  = rest.search(/[\r\n]/);
+
+      if (end !== -1) {
+        // Clean terminator found
+        cleanup();
+        resolve(rest.slice(0, end).trim());
+      } else if (rest.length >= 20) {
+        // No terminator but we have enough data (min response is ~22 chars)
+        cleanup();
+        resolve(rest.trim());
+      }
+      // else keep accumulating
+    }
+
+    function onError(err) { cleanup(); reject(err); }
 
     function cleanup() {
       clearTimeout(timer);
-      parser.removeListener('data', onData);
+      serial.removeListener('data', onData);
       serial.removeListener('error', onError);
     }
 
-    parser.on('data', onData);
+    serial.on('data', onData);
     serial.on('error', onError);
 
     timer = setTimeout(() => {
       cleanup();
-      reject(new Error(`Serial timeout waiting for response to "${cmd}"`));
+      const hint = buf
+        ? ` (received: ${JSON.stringify(buf)})`
+        : ' (nothing received – check cable/path/permissions)';
+      reject(new Error(`Serial timeout for "${cmd}"${hint}`));
     }, REPLY_TIMEOUT);
 
-    serial.write(raw, 'ascii', (err) => {
-      if (err) { cleanup(); reject(err); }
-      // flush ensures bytes are sent before we wait for reply
-      serial.drain((err2) => { if (err2) { cleanup(); reject(err2); } });
+    // IMPORTANT: terminate with \n, not \r
+    serial.write(cmd + '\n', 'ascii', (writeErr) => {
+      if (writeErr) { cleanup(); reject(writeErr); return; }
+      serial.drain((drainErr) => {
+        if (drainErr) { cleanup(); reject(drainErr); }
+      });
     });
   });
 }
 
-// ─── Protocol helpers ─────────────────────────────────────────────────────────
+// ── Protocol helpers ──────────────────────────────────────────────────────────
 
 /**
- * queryZone(zone) → Promise<{ zone, power, source, volume }>
+ * parseZoneStatus(raw, zone)
  *
- * Sends  ?1<ZZ>\r  (e.g. ?111\r for zone 1)
- * Parses response: >ZZPAMUPRDTVOTRB SBLCHLS
- *   We care about offsets (1-based in the data after '>'):
- *     pos 2-3  → ignored (zone echo)  ← actually pos 0-1
- *     pos 4-5  → PR  (power)
- *     pos 10-11→ VO  (volume)
- *     pos 18-19→ CH  (source/channel)
+ * raw example: ">1100000000111111100401"
  *
- * Raw response example for zone 1, power on, source 2, volume 15:
- *   >1100010000150000001300201
- *   >ZZPAPRMUDTVOTRBSBLCHLSpd
- *    0123456789012345678901234
- *              1111111111222222
+ * Strip '>', split into 2-char pairs:
+ *   idx  field
+ *    0   ZZ  (zone echo)
+ *    1   PA
+ *    2   PR  ← power (0=off, 1=on)
+ *    3   MU
+ *    4   DT
+ *    5   VO  ← volume (00-38)
+ *    6   TR
+ *    7   BS
+ *    8   BL
+ *    9   CH  ← source/channel (01-06)
+ *   10   LS
  *
- * NOTE: some firmware versions include a trailing checksum byte. The regex
- *       below is flexible enough to handle both.
+ * Adjust field indices here if your firmware packs fields differently.
  */
 function parseZoneStatus(raw, zone) {
-  // Remove the leading '>'
-  const data = raw.replace(/^>/, '');
+  const data = raw.replace(/^>/, '').trim();
 
-  // Each field is exactly 2 decimal digits.
-  // Field order: ZZ PA PR MU DT VO TR BS BL CH LS [optional extra]
   const fields = [];
   for (let i = 0; i + 1 < data.length; i += 2) {
     fields.push(parseInt(data.slice(i, i + 2), 10));
   }
-  // fields[0] = zone id (e.g. 11)
-  // fields[1] = PA
-  // fields[2] = PR  ← power
-  // fields[3] = MU
-  // fields[4] = DT
-  // fields[5] = VO  ← volume
-  // fields[6] = TR
-  // fields[7] = BS
-  // fields[8] = BL
-  // fields[9] = CH  ← source/channel
-  // fields[10]= LS
 
   if (fields.length < 10) {
-    throw new Error(`Unexpected response format: "${raw}"`);
+    throw new Error(`Short response: "${raw}" – only ${fields.length} fields parsed`);
   }
 
   return {
     zone,
-    power:  fields[2] === 1,
-    volume: fields[5],   // 0-38
-    source: fields[9],   // 1-6
+    power:  fields[2] === 1,  // PR
+    volume: fields[5],         // VO
+    source: fields[9],         // CH
   };
 }
 
-/** Query current state of a zone (1-6) */
 async function getZoneState(zone) {
-  // Query command: ?1<ZZ>  e.g. "?111" for zone 1
-  const cmd = `?1${zoneId(zone)}`;
+  const cmd   = `?${CONTROLLER_ID}${zoneId(zone)}`;
   const reply = await sendCommand(cmd);
   return parseZoneStatus(reply, zone);
 }
 
-/** Power a zone on (true) or off (false) */
 async function setZonePower(zone, on) {
-  // <1<ZZ>PR00  or  <1<ZZ>PR01
-  const val = on ? '01' : '00';
-  const cmd = `<1${zoneId(zone)}PR${val}`;
+  const cmd = `<${CONTROLLER_ID}${zoneId(zone)}PR${on ? '01' : '00'}`;
   await sendCommand(cmd);
 }
 
-/** Set source (channel) for a zone; source is 1-6, zero-padded to 2 digits */
 async function setZoneSource(zone, source) {
   const val = String(source).padStart(2, '0');
-  const cmd = `<1${zoneId(zone)}CH${val}`;
+  const cmd = `<${CONTROLLER_ID}${zoneId(zone)}CH${val}`;
   await sendCommand(cmd);
 }
 
-/**
- * Set volume for a zone; volume is 0-38, clamped server-side.
- * The amp accepts 00-38; 00 is muted/silent, 38 is maximum.
- */
 async function setZoneVolume(zone, volume) {
   const clamped = Math.max(0, Math.min(38, volume));
-  const val = String(clamped).padStart(2, '0');
-  const cmd = `<1${zoneId(zone)}VO${val}`;
+  const val     = String(clamped).padStart(2, '0');
+  const cmd     = `<${CONTROLLER_ID}${zoneId(zone)}VO${val}`;
   await sendCommand(cmd);
 }
 
-// ─── Validation helpers ───────────────────────────────────────────────────────
+// ── Validation ────────────────────────────────────────────────────────────────
 function validZone(z)   { return Number.isInteger(z) && z >= 1 && z <= 6; }
 function validSource(s) { return Number.isInteger(s) && s >= 1 && s <= 6; }
 
-// ─── Express app ──────────────────────────────────────────────────────────────
+// ── Express ───────────────────────────────────────────────────────────────────
 const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// GET /api/health
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, serial: SERIAL_PATH, connected: serial.isOpen });
 });
 
-// GET /api/state?zone=N
 app.get('/api/state', async (req, res) => {
   const zone = parseInt(req.query.zone, 10);
-  if (!validZone(zone)) {
-    return res.status(400).json({ error: 'zone must be 1-6' });
-  }
+  if (!validZone(zone)) return res.status(400).json({ error: 'zone must be 1-6' });
   try {
-    const state = await getZoneState(zone);
-    res.json(state);
+    res.json(await getZoneState(zone));
   } catch (err) {
-    console.error('GET /api/state error:', err.message);
+    console.error('GET /api/state:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-// POST /api/zone/:zone/power   body: { on: true|false }
 app.post('/api/zone/:zone/power', async (req, res) => {
   const zone = parseInt(req.params.zone, 10);
-  if (!validZone(zone)) return res.status(400).json({ error: 'zone must be 1-6' });
-
   const { on } = req.body;
+  if (!validZone(zone))        return res.status(400).json({ error: 'zone must be 1-6' });
   if (typeof on !== 'boolean') return res.status(400).json({ error: '"on" must be boolean' });
-
   try {
     await setZonePower(zone, on);
     res.json({ ok: true, zone, power: on });
   } catch (err) {
-    console.error('POST power error:', err.message);
+    console.error('POST /power:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-// POST /api/zone/:zone/source  body: { source: 1-6 }
 app.post('/api/zone/:zone/source', async (req, res) => {
   const zone   = parseInt(req.params.zone, 10);
   const source = parseInt(req.body.source, 10);
-  if (!validZone(zone))   return res.status(400).json({ error: 'zone must be 1-6' });
+  if (!validZone(zone))     return res.status(400).json({ error: 'zone must be 1-6' });
   if (!validSource(source)) return res.status(400).json({ error: 'source must be 1-6' });
-
   try {
     await setZoneSource(zone, source);
     res.json({ ok: true, zone, source });
   } catch (err) {
-    console.error('POST source error:', err.message);
+    console.error('POST /source:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-// POST /api/zone/:zone/volume  body: { volume: 0-38 }
 app.post('/api/zone/:zone/volume', async (req, res) => {
   const zone   = parseInt(req.params.zone, 10);
   const volume = parseInt(req.body.volume, 10);
   if (!validZone(zone)) return res.status(400).json({ error: 'zone must be 1-6' });
   if (isNaN(volume))    return res.status(400).json({ error: '"volume" must be a number' });
-
   const clamped = Math.max(0, Math.min(38, volume));
   try {
     await setZoneVolume(zone, clamped);
     res.json({ ok: true, zone, volume: clamped });
   } catch (err) {
-    console.error('POST volume error:', err.message);
+    console.error('POST /volume:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-// ─── Serial open + server start ───────────────────────────────────────────────
+// ── Open serial then start HTTP ───────────────────────────────────────────────
 serial.open((err) => {
   if (err) {
-    console.error(`Failed to open serial port ${SERIAL_PATH}:`, err.message);
-    console.error('Set SERIAL_PATH env var to the correct device (e.g. /dev/ttyUSB0)');
+    console.error(`Cannot open ${SERIAL_PATH}:`, err.message);
+    console.error('Check SERIAL_PATH env var and that your user is in the dialout group.');
     process.exit(1);
   }
-  console.log(`Serial port ${SERIAL_PATH} open at ${BAUD_RATE} baud`);
-
+  console.log(`Serial open: ${SERIAL_PATH} @ ${BAUD_RATE} baud`);
   app.listen(PORT, () => {
-    console.log(`Monoprice controller listening on http://0.0.0.0:${PORT}`);
+    console.log(`Monoprice controller ready → http://0.0.0.0:${PORT}`);
   });
 });
 
-serial.on('error', (err) => {
-  console.error('Serial error:', err.message);
-});
+serial.on('error', (err) => console.error('Serial error:', err.message));
