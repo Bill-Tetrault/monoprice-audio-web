@@ -1,0 +1,646 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Monoprice 6-Zone Control</title>
+  <style>
+    :root {
+      --bg-light: #f3f5f7;
+      --card-light: #ffffff;
+      --text-light: #111827;
+      --muted-light: #6b7280;
+      --border-light: #e5e7eb;
+
+      --bg-dark: #0b1020;
+      --card-dark: #111827;
+      --text-dark: #e5e7eb;
+      --muted-dark: #94a3b8;
+      --border-dark: #1f2937;
+
+      --blue: #2563eb;
+      --green: #22c55e;
+      --red: #ef4444;
+      --shadow-light: 0 8px 24px rgba(15,23,42,.12);
+      --shadow-dark: 0 12px 30px rgba(0,0,0,.55);
+      --radius: 16px;
+    }
+
+    html[data-theme="light"] {
+      --bg: var(--bg-light);
+      --card: var(--card-light);
+      --text: var(--text-light);
+      --muted: var(--muted-light);
+      --border: var(--border-light);
+      --shadow: var(--shadow-light);
+    }
+
+    html[data-theme="dark"] {
+      --bg: var(--bg-dark);
+      --card: var(--card-dark);
+      --text: var(--text-dark);
+      --muted: var(--muted-dark);
+      --border: var(--border-dark);
+      --shadow: var(--shadow-dark);
+    }
+
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    body { padding: 14px; padding-bottom: 28px; }
+
+    .app { max-width: 1200px; margin: 0 auto; }
+
+    .header {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(1.2rem, 4vw, 1.9rem);
+      letter-spacing: -0.03em;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      font-size: .9rem;
+      margin-top: 4px;
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .btn-chip {
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--text);
+      border-radius: 999px;
+      padding: 10px 14px;
+      min-height: 44px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 14px;
+    }
+
+    .zone {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 14px;
+    }
+
+    .zone-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .zone-title-wrap {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+      flex: 1;
+    }
+
+    .zone-name-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .zone-icon {
+      width: 1.4rem;
+      text-align: center;
+      flex: 0 0 auto;
+      font-size: 1.2rem;
+    }
+
+    .zone-title {
+      margin: 0;
+      font-size: 1.05rem;
+      font-weight: 700;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .zone-edit {
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      padding: 0;
+      font-size: .95rem;
+    }
+
+    .zone-label {
+      font-size: .78rem;
+      color: var(--muted);
+    }
+
+    .power-icon-btn {
+      width: 48px;
+      height: 48px;
+      border: none;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 1.35rem;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(0,0,0,.18);
+    }
+
+    .power-icon-btn[data-state="off"] { background: var(--red); }
+    .power-icon-btn[data-state="on"] { background: var(--green); }
+
+    .row { display: grid; gap: 6px; margin-bottom: 12px; }
+
+    label { font-size: .88rem; color: var(--muted); }
+
+    select, input[type="range"] {
+      width: 100%;
+    }
+
+    select {
+      min-height: 44px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--card);
+      color: var(--text);
+      padding: 10px 12px;
+      font-size: .95rem;
+    }
+
+    .volume-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: center;
+    }
+
+    input[type="range"] {
+      accent-color: var(--blue);
+      height: 38px;
+    }
+
+    .vol-value {
+      min-width: 52px;
+      text-align: right;
+      font-weight: 700;
+      font-size: .9rem;
+    }
+
+    .fine, .status {
+      font-size: .78rem;
+      color: var(--muted);
+    }
+
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.45);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      padding: 14px;
+    }
+
+    .modal {
+      width: min(520px, 100%);
+      background: var(--card);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+      padding: 16px;
+      max-height: 90vh;
+      overflow: auto;
+    }
+
+    .modal h2 {
+      margin: 0 0 12px;
+      font-size: 1.1rem;
+    }
+
+    .form-row {
+      display: grid;
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+
+    .modal input[type="text"] {
+      width: 100%;
+      min-height: 44px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--text);
+      padding: 10px 12px;
+      font-size: .95rem;
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+      margin-top: 16px;
+    }
+
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: 16px;
+      transform: translateX(-50%);
+      background: rgba(15,23,42,.96);
+      color: white;
+      padding: 9px 14px;
+      border-radius: 999px;
+      font-size: .85rem;
+      opacity: 0;
+      transition: opacity .15s ease;
+      pointer-events: none;
+      z-index: 200;
+      max-width: calc(100vw - 24px);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .toast.show { opacity: 1; }
+
+    @media (min-width: 700px) {
+      .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+
+    @media (min-width: 1050px) {
+      .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <div>
+        <h1>Monoprice 6-Zone Control</h1>
+        <div class="subtitle">Custom names, shared sources, live polling, and saved settings</div>
+      </div>
+      <div class="toolbar">
+        <button id="editSourcesBtn" class="btn-chip">Edit Sources</button>
+        <button id="themeToggle" class="btn-chip"><span id="themeIcon">🌞</span><span id="themeLabel">Light</span></button>
+      </div>
+    </header>
+
+    <main class="grid" id="zones"></main>
+  </div>
+
+  <div class="modal-backdrop" id="sourceModalBackdrop">
+    <div class="modal">
+      <h2>Edit Source Names</h2>
+      <div id="sourceFields"></div>
+      <div class="modal-actions">
+        <button id="cancelSourcesBtn" class="btn-chip" type="button">Cancel</button>
+        <button id="saveSourcesBtn" class="btn-chip" type="button">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const SETTINGS_KEY = "monoprice_ui_settings_v1";
+    const ICONS = {
+      default: "🏠",
+      kitchen: "🍽️",
+      patio: "🌿",
+      living: "🛋️",
+      bedroom: "🛏️",
+      office: "💻",
+      garage: "🚗",
+      bath: "🚿",
+      media: "🎬",
+      kids: "🧸"
+    };
+
+    const DEFAULT_SETTINGS = {
+      theme: "light",
+      sourceNames: {
+        1: "Source 1",
+        2: "Source 2",
+        3: "Source 3",
+        4: "Source 4",
+        5: "Source 5",
+        6: "Source 6"
+      },
+      zones: {
+        1: { name: "Kitchen", icon: "kitchen" },
+        2: { name: "Patio", icon: "patio" },
+        3: { name: "Living Room", icon: "living" },
+        4: { name: "Bedroom", icon: "bedroom" },
+        5: { name: "Office", icon: "office" },
+        6: { name: "Garage", icon: "garage" }
+      }
+    };
+
+    function clone(obj) {
+      return JSON.parse(JSON.stringify(obj));
+    }
+
+    function loadSettings() {
+      try {
+        const raw = localStorage.getItem(SETTINGS_KEY);
+        if (!raw) return clone(DEFAULT_SETTINGS);
+        const parsed = JSON.parse(raw);
+        return {
+          ...clone(DEFAULT_SETTINGS),
+          ...parsed,
+          sourceNames: { ...DEFAULT_SETTINGS.sourceNames, ...(parsed.sourceNames || {}) },
+          zones: { ...DEFAULT_SETTINGS.zones, ...(parsed.zones || {}) }
+        };
+      } catch {
+        return clone(DEFAULT_SETTINGS);
+      }
+    }
+
+    function saveSettings() {
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    }
+
+    function sourceLabel(source) {
+      return settings.sourceNames[String(source)] || `Source ${source}`;
+    }
+
+    function zoneIcon(key) {
+      return ICONS[key] || ICONS.default;
+    }
+
+    let settings = loadSettings();
+
+    function applyTheme(theme) {
+      document.documentElement.setAttribute("data-theme", theme);
+      document.getElementById("themeLabel").textContent = theme === "dark" ? "Dark" : "Light";
+      document.getElementById("themeIcon").textContent = theme === "dark" ? "🌙" : "🌞";
+    }
+
+    applyTheme(settings.theme);
+
+    document.getElementById("themeToggle").onclick = () => {
+      settings.theme = settings.theme === "light" ? "dark" : "light";
+      saveSettings();
+      applyTheme(settings.theme);
+    };
+
+    const toast = document.getElementById("toast");
+    function showToast(msg) {
+      toast.textContent = msg;
+      toast.classList.add("show");
+      clearTimeout(window.toastTimer);
+      window.toastTimer = setTimeout(() => toast.classList.remove("show"), 1200);
+    }
+
+    async function post(url, body) {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Request failed");
+      return data;
+    }
+
+    async function getJson(url) {
+      const res = await fetch(url);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Request failed");
+      return data;
+    }
+
+    const zonesContainer = document.getElementById("zones");
+    let zoneCards = [];
+
+    function buildSourceOptions(select) {
+      select.innerHTML = "";
+      for (let i = 1; i <= 6; i++) {
+        const opt = document.createElement("option");
+        opt.value = String(i);
+        opt.textContent = sourceLabel(i);
+        select.appendChild(opt);
+      }
+    }
+
+    function zoneCard(zoneId) {
+      const preset = settings.zones[String(zoneId)] || { name: `Zone ${zoneId}`, icon: "default" };
+      const el = document.createElement("section");
+      el.className = "zone";
+
+      el.innerHTML = `
+        <div class="zone-head">
+          <div class="zone-title-wrap">
+            <div class="zone-name-row">
+              <span class="zone-icon" data-zone-icon>${zoneIcon(preset.icon)}</span>
+              <h2 class="zone-title" data-zone-name>${preset.name}</h2>
+              <button class="zone-edit" type="button">✏️</button>
+            </div>
+            <span class="zone-label">Zone ${zoneId}</span>
+          </div>
+          <button class="power-icon-btn" type="button" data-state="off" aria-label="Toggle power">⏻</button>
+        </div>
+
+        <div class="row">
+          <label>Source</label>
+          <select></select>
+        </div>
+
+        <div class="row">
+          <label>Volume</label>
+          <div class="volume-row">
+            <input type="range" min="0" max="100" value="50" />
+            <div class="vol-value">50</div>
+          </div>
+          <div class="fine">Slide, then release to send the command.</div>
+          <div class="status" data-status>Loading...</div>
+        </div>
+      `;
+
+      const nameEl = el.querySelector("[data-zone-name]");
+      const iconEl = el.querySelector("[data-zone-icon]");
+      const editBtn = el.querySelector(".zone-edit");
+      const powerBtn = el.querySelector(".power-icon-btn");
+      const select = el.querySelector("select");
+      const slider = el.querySelector('input[type="range"]');
+      const volValue = el.querySelector(".vol-value");
+      const status = el.querySelector("[data-status]");
+
+      buildSourceOptions(select);
+
+      editBtn.onclick = () => {
+        const current = settings.zones[String(zoneId)] || { name: `Zone ${zoneId}`, icon: "default" };
+        const newName = prompt("Zone name", current.name);
+        if (newName === null) return;
+        const newIcon = prompt("Zone icon key", current.icon);
+
+        settings.zones[String(zoneId)] = {
+          name: (newName.trim() || current.name),
+          icon: (newIcon && newIcon.trim()) ? newIcon.trim() : current.icon
+        };
+        saveSettings();
+        renderZones();
+      };
+
+      powerBtn.onclick = async () => {
+        const currentState = powerBtn.getAttribute("data-state") === "on";
+        const nextState = !currentState;
+        status.textContent = "Sending...";
+        try {
+          await post(`/api/zone/${zoneId}/power`, { on: nextState });
+          powerBtn.setAttribute("data-state", nextState ? "on" : "off");
+          status.textContent = nextState ? "On" : "Off";
+          showToast(`${nameEl.textContent}: ${nextState ? "On" : "Off"}`);
+        } catch (e) {
+          status.textContent = "Error";
+          showToast(e.message);
+        }
+      };
+
+      select.onchange = async () => {
+        status.textContent = "Sending...";
+        try {
+          await post(`/api/zone/${zoneId}/source`, { source: Number(select.value) });
+          status.textContent = `Source: ${sourceLabel(select.value)}`;
+          showToast(`${nameEl.textContent}: ${sourceLabel(select.value)}`);
+        } catch (e) {
+          status.textContent = "Error";
+          showToast(e.message);
+        }
+      };
+
+      slider.oninput = () => {
+        volValue.textContent = slider.value;
+      };
+
+      slider.onchange = async () => {
+        status.textContent = "Sending...";
+        try {
+          await post(`/api/zone/${zoneId}/volume`, { volume: Number(slider.value) });
+          status.textContent = `Vol ${slider.value}`;
+          showToast(`${nameEl.textContent}: Vol ${slider.value}`);
+        } catch (e) {
+          status.textContent = "Error";
+          showToast(e.message);
+        }
+      };
+
+      el.refreshState = async () => {
+        try {
+          const data = await getJson(`/api/state?zone=${zoneId}`);
+          powerBtn.setAttribute("data-state", data.power ? "on" : "off");
+          if (data.source != null) select.value = String(data.source);
+          if (data.volume != null) {
+            slider.value = String(data.volume);
+            volValue.textContent = String(data.volume);
+          }
+          status.textContent = `Source: ${sourceLabel(select.value)}`;
+        } catch {
+          status.textContent = "Offline";
+        }
+      };
+
+      return el;
+    }
+
+    function renderZones() {
+      zonesContainer.innerHTML = "";
+      zoneCards = [];
+      for (let i = 1; i <= 6; i++) {
+        const card = zoneCard(i);
+        zoneCards.push(card);
+        zonesContainer.appendChild(card);
+      }
+      refreshAll();
+    }
+
+    async function refreshAll() {
+      await Promise.all(zoneCards.map(z => z.refreshState()));
+    }
+
+    const modalBackdrop = document.getElementById("sourceModalBackdrop");
+    const sourceFields = document.getElementById("sourceFields");
+
+    function openSourceModal() {
+      sourceFields.innerHTML = "";
+      for (let i = 1; i <= 6; i++) {
+        const row = document.createElement("div");
+        row.className = "form-row";
+        row.innerHTML = `
+          <label for="src-${i}">Source ${i}</label>
+          <input id="src-${i}" type="text" value="${settings.sourceNames[String(i)] || `Source ${i}`}" />
+        `;
+        sourceFields.appendChild(row);
+      }
+      modalBackdrop.style.display = "flex";
+    }
+
+    function closeSourceModal() {
+      modalBackdrop.style.display = "none";
+    }
+
+    document.getElementById("editSourcesBtn").onclick = openSourceModal;
+    document.getElementById("cancelSourcesBtn").onclick = closeSourceModal;
+    document.getElementById("saveSourcesBtn").onclick = () => {
+      for (let i = 1; i <= 6; i++) {
+        const input = document.getElementById(`src-${i}`);
+        settings.sourceNames[String(i)] = input.value.trim() || `Source ${i}`;
+      }
+      saveSettings();
+      closeSourceModal();
+      renderZones();
+    };
+
+    modalBackdrop.addEventListener("click", e => {
+      if (e.target === modalBackdrop) closeSourceModal();
+    });
+
+    renderZones();
+    setInterval(refreshAll, 30000);
+
+    window.addEventListener("storage", e => {
+      if (e.key === SETTINGS_KEY) {
+        settings = loadSettings();
+        applyTheme(settings.theme);
+        renderZones();
+      }
+    });
+  </script>
+</body>
+</html>
