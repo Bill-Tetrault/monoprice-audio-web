@@ -57,7 +57,7 @@ const serial = new SerialPort({
   autoOpen: false,
 });
 
-const parser = serial.pipe(new ReadlineParser({ delimiter: '\r\n' }));
+const parser = serial.pipe(new ReadlineParser({ delimiter: '\r' }));
 
 // Queue so we never interleave serial transactions
 let serialQueue = Promise.resolve();
@@ -92,7 +92,7 @@ function _doSend(cmd) {
     const onData = (line) => {
       line = line.trim();
       // Skip empty lines and echo lines (echoed chars will not start with '>')
-      if (!line || !line.startsWith('>')) return;
+       if (!line || line === '#' || !line.startsWith('>')) return;
       cleanup();
       resolve(line);
     };
