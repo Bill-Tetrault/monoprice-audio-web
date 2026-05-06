@@ -180,7 +180,7 @@ function parseZoneStatus(raw, zone) {
 /** Query current state of a zone (1-6) */
 async function getZoneState(zone) {
   // Query command: ?1<ZZ>  e.g. "?111" for zone 1
-  const cmd = `?1${zoneId(zone)}`;
+  const cmd = `?${zoneId(zone)}`;
   const reply = await sendCommand(cmd);
   return parseZoneStatus(reply, zone);
 }
