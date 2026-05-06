@@ -60,7 +60,7 @@ const serial = new SerialPort({
 
 // The 10761 terminates responses with \r only (not \r\n).
 // Using \r\n as delimiter means the parser never fires → timeout.
-const parser = serial.pipe(new ReadlineParser({ delimiter: '\r' }));
+const parser = serial.pipe(new ReadlineParser({ delimiter: '\n' }));
 
 // Queue so we never interleave serial transactions
 let serialQueue = Promise.resolve();
@@ -100,7 +100,7 @@ function sendCommand(cmd) {
 
 function _doSend(cmd) {
   return new Promise((resolve, reject) => {
-    const raw = cmd + '\r';
+    const raw = cmd + '\n'; // The amp accepts either \r or \n as command terminator; we use \n for easier parsing.
     let   timer;
 
     const onData = (line) => {
