@@ -4,31 +4,27 @@
  * server.js – Monoprice 10761 RS-232 Web Controller
  *
  * CONFIRMED PROTOCOL (9600 8-N-1):
- *   Commands are terminated with \n (newline), NOT \r.
- *   Sending \r causes "Command Error." from the amp.
+ *   Terminator : \r\n
+ *   Query cmds : expect a ">" response line  e.g. ?11\r\n → >1100000000111111100401
+ *   Set cmds   : NO response – amp silently executes  e.g. <14PR01\r\n → (nothing)
  *
- *   Query  : ?1<Z>\n          Z = zone 1-6  e.g. "?11\n"
- *   Set pwr: <1<Z>PR<00|01>\n
- *   Set src: <1<Z>CH<01-06>\n
- *   Set vol: <1<Z>VO<00-38>\n
- *
- *   Response: amp echoes command, sends '#' prompt, then reply starting with '>'.
- *   Full raw receive example: "?11\n#>1100000000111111100401"
- *
- *   We accumulate raw bytes and scan for '>' to extract the response.
+ *   Query  : ?1<Z>\r\n          Z = zone 1-6
+ *   Set pwr: <1<Z>PR<00|01>\r\n
+ *   Set src: <1<Z>CH<01-06>\r\n
+ *   Set vol: <1<Z>VO<00-38>\r\n
  */
 
 const express = require('express');
 const path    = require('path');
 const { SerialPort } = require('serialport');
 
-const PORT        = parseInt(process.env.PORT || '3000', 10);
-const SERIAL_PATH = process.env.SERIAL_PATH   || '/dev/ttyUSB0';
-const BAUD_RATE   = 9600;
-const CONTROLLER_ID = 1;   // change to 2/3 for chained units
-const REPLY_TIMEOUT = 3000; // ms
+const PORT          = parseInt(process.env.PORT || '3000', 10);
+const SERIAL_PATH   = process.env.SERIAL_PATH   || '/dev/ttyUSB0';
+const BAUD_RATE     = 9600;
+const CONTROLLER_ID = 1;
+const REPLY_TIMEOUT = 4000; // ms – for query commands only
 
-// ── Serial port (raw Buffer mode – no parser) ─────────────────────────────────
+// ── Serial port (raw Buffer mode) ─────────────────────────────────────────────
 const serial = new SerialPort({
   path:     SERIAL_PATH,
   baudRate: BAUD_RATE,
@@ -41,60 +37,75 @@ const serial = new SerialPort({
 // One transaction at a time
 let serialQueue = Promise.resolve();
 
-// ── Zone ID helper ────────────────────────────────────────────────────────────
-// Confirmed: ?1<Z> single-digit zone (1-6)  e.g. "?11" for zone 1
-// Change to `${CONTROLLER_ID}${zone}` if your firmware uses 11-16 format.
-function zoneId(zone) {
-  return `${zone}`;
-}
+function zoneId(zone) { return `${zone}`; }
 
-// ── Core serial transaction ───────────────────────────────────────────────────
+// ── Write-only command (set power/source/volume – no response expected) ────────
 /**
- * sendCommand(cmd) → Promise<string>
- *
- * Writes cmd + \n (CONFIRMED working terminator for 10761).
- * Accumulates all incoming bytes and resolves with the first line
- * starting with '>' — immune to echo, '#' prompts, and extra bytes.
+ * writeCommand(cmd) → Promise<void>
+ * Writes cmd + \r\n and resolves after drain. Does NOT wait for any response.
  */
-function sendCommand(cmd) {
-  serialQueue = serialQueue.then(() => _doSend(cmd));
+function writeCommand(cmd) {
+  serialQueue = serialQueue.then(() => _doWrite(cmd));
   return serialQueue;
 }
 
-function _doSend(cmd) {
+function _doWrite(cmd) {
   return new Promise((resolve, reject) => {
-    let buf = '';
-    let timer;
+    serial.write(cmd + '\r\n', 'ascii', (err) => {
+      if (err) return reject(err);
+      serial.drain((err2) => {
+        if (err2) return reject(err2);
+        resolve();
+      });
+    });
+  });
+}
+
+// ── Query command (expects ">" response) ──────────────────────────────────────
+/**
+ * queryCommand(cmd) → Promise<string>
+ * Writes cmd + \r\n and waits for a response line starting with '>'.
+ * Accumulates raw bytes; resolves 200ms after buffer stops growing once '>' is seen.
+ */
+function queryCommand(cmd) {
+  serialQueue = serialQueue.then(() => _doQuery(cmd));
+  return serialQueue;
+}
+
+function _doQuery(cmd) {
+  return new Promise((resolve, reject) => {
+    let buf         = '';
+    let settleTimer = null;
+    let timeoutTimer;
+
+    function tryResolve() {
+      const start = buf.indexOf('>');
+      if (start === -1) return false;
+      const line = buf.slice(start).replace(/[\r\n]+$/, '').trim();
+      if (line.length < 3) return false;
+      cleanup();
+      resolve(line);
+      return true;
+    }
 
     function onData(chunk) {
       buf += chunk.toString('ascii');
-
-      // Scan for response: starts with '>'
-      const start = buf.indexOf('>');
-      if (start === -1) return; // not yet received
-
-      // Grab everything from '>' to end of current buffer
-      // (response may not have a clean terminator – grab what we have
-      //  once we see '>' and the buffer stops growing, or hits \r or \n)
-      const rest = buf.slice(start);
-      const end  = rest.search(/[\r\n]/);
-
-      if (end !== -1) {
-        // Clean terminator found
-        cleanup();
-        resolve(rest.slice(0, end).trim());
-      } else if (rest.length >= 20) {
-        // No terminator but we have enough data (min response is ~22 chars)
-        cleanup();
-        resolve(rest.trim());
+      clearTimeout(settleTimer);
+      if (buf.indexOf('>') !== -1) {
+        settleTimer = setTimeout(() => {
+          if (!tryResolve()) {
+            cleanup();
+            reject(new Error(`Incomplete response for "${cmd}": ${JSON.stringify(buf)}`));
+          }
+        }, 200);
       }
-      // else keep accumulating
     }
 
     function onError(err) { cleanup(); reject(err); }
 
     function cleanup() {
-      clearTimeout(timer);
+      clearTimeout(settleTimer);
+      clearTimeout(timeoutTimer);
       serial.removeListener('data', onData);
       serial.removeListener('error', onError);
     }
@@ -102,7 +113,7 @@ function _doSend(cmd) {
     serial.on('data', onData);
     serial.on('error', onError);
 
-    timer = setTimeout(() => {
+    timeoutTimer = setTimeout(() => {
       cleanup();
       const hint = buf
         ? ` (received: ${JSON.stringify(buf)})`
@@ -110,8 +121,7 @@ function _doSend(cmd) {
       reject(new Error(`Serial timeout for "${cmd}"${hint}`));
     }, REPLY_TIMEOUT);
 
-    // IMPORTANT: terminate with \n, not \r
-    serial.write(cmd + '\r', 'ascii', (writeErr) => {
+    serial.write(cmd + '\r\n', 'ascii', (writeErr) => {
       if (writeErr) { cleanup(); reject(writeErr); return; }
       serial.drain((drainErr) => {
         if (drainErr) { cleanup(); reject(drainErr); }
@@ -120,71 +130,49 @@ function _doSend(cmd) {
   });
 }
 
-// ── Protocol helpers ──────────────────────────────────────────────────────────
-
+// ── Response parser ───────────────────────────────────────────────────────────
 /**
  * parseZoneStatus(raw, zone)
- *
  * raw example: ">1100000000111111100401"
- *
- * Strip '>', split into 2-char pairs:
- *   idx  field
- *    0   ZZ  (zone echo)
- *    1   PA
- *    2   PR  ← power (0=off, 1=on)
- *    3   MU
- *    4   DT
- *    5   VO  ← volume (00-38)
- *    6   TR
- *    7   BS
- *    8   BL
- *    9   CH  ← source/channel (01-06)
- *   10   LS
- *
- * Adjust field indices here if your firmware packs fields differently.
+ * 2-char fields after '>':
+ *   0=ZZ  1=PA  2=PR(power 0/1)  3=MU  4=DT  5=VO(0-38)
+ *   6=TR  7=BS  8=BL  9=CH(source 1-6)  10=LS
  */
 function parseZoneStatus(raw, zone) {
   const data = raw.replace(/^>/, '').trim();
-
   const fields = [];
   for (let i = 0; i + 1 < data.length; i += 2) {
     fields.push(parseInt(data.slice(i, i + 2), 10));
   }
-
   if (fields.length < 10) {
-    throw new Error(`Short response: "${raw}" – only ${fields.length} fields parsed`);
+    throw new Error(`Short response: "${raw}" (${fields.length} fields)`);
   }
-
   return {
     zone,
-    power:  fields[2] === 1,  // PR
-    volume: fields[5],         // VO
-    source: fields[9],         // CH
+    power:  fields[2] === 1,
+    volume: fields[5],
+    source: fields[9],
   };
 }
 
+// ── Protocol functions ────────────────────────────────────────────────────────
 async function getZoneState(zone) {
-  const cmd   = `?${CONTROLLER_ID}${zoneId(zone)}`;
-  const reply = await sendCommand(cmd);
+  const reply = await queryCommand(`?${CONTROLLER_ID}${zoneId(zone)}`);
   return parseZoneStatus(reply, zone);
 }
 
+// Set commands use writeCommand – no response expected
 async function setZonePower(zone, on) {
-  const cmd = `<${CONTROLLER_ID}${zoneId(zone)}PR${on ? '01' : '00'}`;
-  await sendCommand(cmd);
+  await writeCommand(`<${CONTROLLER_ID}${zoneId(zone)}PR${on ? '01' : '00'}`);
 }
 
 async function setZoneSource(zone, source) {
-  const val = String(source).padStart(2, '0');
-  const cmd = `<${CONTROLLER_ID}${zoneId(zone)}CH${val}`;
-  await sendCommand(cmd);
+  await writeCommand(`<${CONTROLLER_ID}${zoneId(zone)}CH${String(source).padStart(2, '0')}`);
 }
 
 async function setZoneVolume(zone, volume) {
-  const clamped = Math.max(0, Math.min(38, volume));
-  const val     = String(clamped).padStart(2, '0');
-  const cmd     = `<${CONTROLLER_ID}${zoneId(zone)}VO${val}`;
-  await sendCommand(cmd);
+  const v = Math.max(0, Math.min(38, volume));
+  await writeCommand(`<${CONTROLLER_ID}${zoneId(zone)}VO${String(v).padStart(2, '0')}`);
 }
 
 // ── Validation ────────────────────────────────────────────────────────────────
@@ -258,13 +246,10 @@ app.post('/api/zone/:zone/volume', async (req, res) => {
 serial.open((err) => {
   if (err) {
     console.error(`Cannot open ${SERIAL_PATH}:`, err.message);
-    console.error('Check SERIAL_PATH env var and that your user is in the dialout group.');
     process.exit(1);
   }
   console.log(`Serial open: ${SERIAL_PATH} @ ${BAUD_RATE} baud`);
-  app.listen(PORT, () => {
-    console.log(`Monoprice controller ready → http://0.0.0.0:${PORT}`);
-  });
+  app.listen(PORT, () => console.log(`Monoprice controller → http://0.0.0.0:${PORT}`));
 });
 
 serial.on('error', (err) => console.error('Serial error:', err.message));
