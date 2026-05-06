@@ -180,11 +180,14 @@
     }
 
     .power-icon-btn[data-state="off"] { background: var(--red); }
-    .power-icon-btn[data-state="on"] { background: var(--green); }
+    .power-icon-btn[data-state="on"]  { background: var(--green); }
 
     .row { display: grid; gap: 6px; margin-bottom: 12px; }
 
-    label { font-size: .88rem; color: var(--muted); }
+    label {
+      font-size: .88rem;
+      color: var(--muted);
+    }
 
     select, input[type="range"] {
       width: 100%;
@@ -313,11 +316,14 @@
     <header class="header">
       <div>
         <h1>Monoprice 6-Zone Control</h1>
-        <div class="subtitle">Custom names, shared sources, live polling, and saved settings</div>
+        <div class="subtitle">Custom names, shared sources, live state, and saved settings</div>
       </div>
       <div class="toolbar">
         <button id="editSourcesBtn" class="btn-chip">Edit Sources</button>
-        <button id="themeToggle" class="btn-chip"><span id="themeIcon">🌞</span><span id="themeLabel">Light</span></button>
+        <button id="themeToggle" class="btn-chip">
+          <span id="themeIcon">🌞</span>
+          <span id="themeLabel">Light</span>
+        </button>
       </div>
     </header>
 
@@ -363,12 +369,12 @@
         6: "Source 6"
       },
       zones: {
-        1: { name: "Kitchen", icon: "kitchen" },
-        2: { name: "Patio", icon: "patio" },
-        3: { name: "Living Room", icon: "living" },
-        4: { name: "Bedroom", icon: "bedroom" },
-        5: { name: "Office", icon: "office" },
-        6: { name: "Garage", icon: "garage" }
+        1: { name: "Kitchen",   icon: "kitchen" },
+        2: { name: "Patio",     icon: "patio" },
+        3: { name: "Living",    icon: "living" },
+        4: { name: "Bedroom",   icon: "bedroom" },
+        5: { name: "Office",    icon: "office" },
+        6: { name: "Garage",    icon: "garage" }
       }
     };
 
@@ -392,6 +398,8 @@
       }
     }
 
+    let settings = loadSettings();
+
     function saveSettings() {
       localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
     }
@@ -403,8 +411,6 @@
     function zoneIcon(key) {
       return ICONS[key] || ICONS.default;
     }
-
-    let settings = loadSettings();
 
     function applyTheme(theme) {
       document.documentElement.setAttribute("data-theme", theme);
@@ -421,6 +427,7 @@
     };
 
     const toast = document.getElementById("toast");
+
     function showToast(msg) {
       toast.textContent = msg;
       toast.classList.add("show");
@@ -460,7 +467,7 @@
     }
 
     function zoneCard(zoneId) {
-      const preset = settings.zones[String(zoneId)] || { name: `Zone ${zoneId}`, icon: "default" };
+      const zConfig = settings.zones[String(zoneId)] || { name: `Zone ${zoneId}`, icon: "default" };
       const el = document.createElement("section");
       el.className = "zone";
 
@@ -468,8 +475,8 @@
         <div class="zone-head">
           <div class="zone-title-wrap">
             <div class="zone-name-row">
-              <span class="zone-icon" data-zone-icon>${zoneIcon(preset.icon)}</span>
-              <h2 class="zone-title" data-zone-name>${preset.name}</h2>
+              <span class="zone-icon" data-zone-icon>${zoneIcon(zConfig.icon)}</span>
+              <h2 class="zone-title" data-zone-name>${zConfig.name}</h2>
               <button class="zone-edit" type="button">✏️</button>
             </div>
             <span class="zone-label">Zone ${zoneId}</span>
@@ -483,10 +490,10 @@
         </div>
 
         <div class="row">
-          <label>Volume</label>
+          <label>Volume (1–38)</label>
           <div class="volume-row">
-            <input type="range" min="0" max="100" value="50" />
-            <div class="vol-value">50</div>
+            <input type="range" min="1" max="38" value="20" />
+            <div class="vol-value">20</div>
           </div>
           <div class="fine">Slide, then release to send the command.</div>
           <div class="status" data-status>Loading...</div>
@@ -551,10 +558,15 @@
 
       slider.onchange = async () => {
         status.textContent = "Sending...";
+        let vol = Number(slider.value);
+        if (vol < 1) vol = 1;
+        if (vol > 38) vol = 38;
         try {
-          await post(`/api/zone/${zoneId}/volume`, { volume: Number(slider.value) });
-          status.textContent = `Vol ${slider.value}`;
-          showToast(`${nameEl.textContent}: Vol ${slider.value}`);
+          await post(`/api/zone/${zoneId}/volume`, { volume: vol });
+          slider.value = String(vol);
+          volValue.textContent = String(vol);
+          status.textContent = `Vol ${vol}`;
+          showToast(`${nameEl.textContent}: Vol ${vol}`);
         } catch (e) {
           status.textContent = "Error";
           showToast(e.message);
@@ -564,13 +576,38 @@
       el.refreshState = async () => {
         try {
           const data = await getJson(`/api/state?zone=${zoneId}`);
-          powerBtn.setAttribute("data-state", data.power ? "on" : "off");
-          if (data.source != null) select.value = String(data.source);
-          if (data.volume != null) {
-            slider.value = String(data.volume);
-            volValue.textContent = String(data.volume);
+          // Power
+          if (typeof data.power === "boolean") {
+            powerBtn.setAttribute("data-state", data.power ? "on" : "off");
+          } else {
+            powerBtn.setAttribute("data-state", "off");
           }
-          status.textContent = `Source: ${sourceLabel(select.value)}`;
+
+          // Source
+          if (data.source != null) {
+            const src = String(data.source);
+            if (["1","2","3","4","5","6"].includes(src)) {
+              select.value = src;
+            }
+          }
+
+          // Volume (1–38)
+          if (data.volume != null) {
+            let vol = Number(data.volume);
+            if (!Number.isFinite(vol)) vol = 20;
+            if (vol < 1) vol = 1;
+            if (vol > 38) vol = 38;
+            slider.value = String(vol);
+            volValue.textContent = String(vol);
+          }
+
+          if (data.power === true && data.source != null) {
+            status.textContent = `Source: ${sourceLabel(select.value)}`;
+          } else if (data.power === false) {
+            status.textContent = "Off";
+          } else {
+            status.textContent = "Unknown";
+          }
         } catch {
           status.textContent = "Offline";
         }
