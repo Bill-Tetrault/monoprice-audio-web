@@ -1,612 +1,704 @@
-<!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<!doctype html>
+<html lang="en" data-theme="light">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>🎵 Home Audio</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Monoprice 6-Zone Control</title>
   <style>
-    /* ── CSS custom properties (theme) ──────────────────────────────────── */
     :root {
-      --bg:          #121212;
-      --surface:     #1e1e1e;
-      --surface2:    #2a2a2a;
-      --border:      #333;
-      --text:        #f0f0f0;
-      --text-muted:  #999;
-      --accent:      #1db954;
-      --accent-dark: #158a3b;
-      --danger:      #e74c3c;
-      --shadow:      0 2px 12px rgba(0,0,0,.45);
-      --radius:      14px;
-    }
-    [data-theme="light"] {
-      --bg:         #f0f2f5;
-      --surface:    #ffffff;
-      --surface2:   #e8ecf0;
-      --border:     #d0d5dd;
-      --text:       #1a1a1a;
-      --text-muted: #666;
-      --shadow:     0 2px 12px rgba(0,0,0,.12);
+      --bg-light: #f3f5f7;
+      --card-light: #ffffff;
+      --text-light: #111827;
+      --muted-light: #6b7280;
+      --border-light: #e5e7eb;
+
+      --bg-dark: #0b1020;
+      --card-dark: #111827;
+      --text-dark: #e5e7eb;
+      --muted-dark: #94a3b8;
+      --border-dark: #1f2937;
+
+      --blue: #2563eb;
+      --green: #22c55e;
+      --red: #ef4444;
+      --shadow-light: 0 8px 24px rgba(15,23,42,.12);
+      --shadow-dark: 0 12px 30px rgba(0,0,0,.55);
+      --radius: 16px;
     }
 
-    /* ── Reset / base ────────────────────────────────────────────────────── */
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    html[data-theme="light"] {
+      --bg: var(--bg-light);
+      --card: var(--card-light);
+      --text: var(--text-light);
+      --muted: var(--muted-light);
+      --border: var(--border-light);
+      --shadow: var(--shadow-light);
+    }
+
+    html[data-theme="dark"] {
+      --bg: var(--bg-dark);
+      --card: var(--card-dark);
+      --text: var(--text-dark);
+      --muted: var(--muted-dark);
+      --border: var(--border-dark);
+      --shadow: var(--shadow-dark);
+    }
+
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
       background: var(--bg);
       color: var(--text);
-      min-height: 100dvh;
-      transition: background .2s, color .2s;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }
 
-    /* ── Header ──────────────────────────────────────────────────────────── */
-    header {
-      position: sticky; top: 0; z-index: 50;
-      background: var(--surface);
-      border-bottom: 1px solid var(--border);
-      padding: 12px 16px;
-      display: flex; align-items: center; gap: 10px;
-      box-shadow: var(--shadow);
-    }
-    header h1 { flex: 1; font-size: 1.1rem; font-weight: 700; letter-spacing: -.02em; }
-    header h1 span { color: var(--accent); }
-    .hdr-btn {
-      background: var(--surface2); border: 1px solid var(--border);
-      color: var(--text); border-radius: 8px;
-      padding: 6px 12px; font-size: .85rem; cursor: pointer;
-      white-space: nowrap;
-      transition: background .15s;
-    }
-    .hdr-btn:hover { background: var(--border); }
+    body { padding: 14px; padding-bottom: 28px; }
 
-    /* ── Zone grid ───────────────────────────────────────────────────────── */
-    main {
-      padding: 16px;
+    .app { max-width: 1200px; margin: 0 auto; }
+
+    .header {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(1.2rem, 4vw, 1.9rem);
+      letter-spacing: -0.03em;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      font-size: .9rem;
+      margin-top: 4px;
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .btn-chip {
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--text);
+      border-radius: 999px;
+      padding: 10px 14px;
+      min-height: 44px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+    }
+
+    .grid {
       display: grid;
-      gap: 14px;
       grid-template-columns: 1fr;
+      gap: 14px;
     }
-    @media (min-width: 540px)  { main { grid-template-columns: 1fr 1fr; } }
-    @media (min-width: 900px)  { main { grid-template-columns: 1fr 1fr 1fr; } }
 
-    /* ── Zone card ───────────────────────────────────────────────────────── */
-    .zone-card {
-      background: var(--surface);
+    .zone {
+      background: var(--card);
       border: 1px solid var(--border);
       border-radius: var(--radius);
-      padding: 16px;
       box-shadow: var(--shadow);
-      transition: border-color .2s, opacity .3s;
+      padding: 14px;
     }
-    .zone-card.off { opacity: .6; }
 
-    .card-header {
-      display: flex; align-items: center; gap: 10px; margin-bottom: 14px;
+    .zone-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
     }
-    .zone-icon { font-size: 1.6rem; cursor: pointer; user-select: none; }
-    .zone-name-wrap { flex: 1; }
-    .zone-name {
-      font-size: 1rem; font-weight: 600;
-      background: transparent; border: none; border-bottom: 1px dashed transparent;
-      color: var(--text); width: 100%; outline: none;
+
+    .zone-title-wrap {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+      flex: 1;
+    }
+
+    .zone-name-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .zone-icon {
+      width: 1.4rem;
+      text-align: center;
+      flex: 0 0 auto;
+      font-size: 1.2rem;
+    }
+
+    .zone-title {
+      margin: 0;
+      font-size: 1.05rem;
+      font-weight: 700;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .zone-edit {
+      border: none;
+      background: transparent;
+      color: var(--muted);
       cursor: pointer;
-      transition: border-color .15s;
-    }
-    .zone-name:focus { border-bottom-color: var(--accent); cursor: text; }
-    .zone-num { font-size: .72rem; color: var(--text-muted); margin-top: 2px; }
-
-    /* Power button */
-    .btn-power {
-      width: 42px; height: 42px; border-radius: 50%;
-      border: 2px solid var(--border); background: var(--surface2);
-      font-size: 1.3rem; cursor: pointer; color: var(--text-muted);
-      display: flex; align-items: center; justify-content: center;
-      transition: background .15s, border-color .15s, color .15s;
-      flex-shrink: 0;
-    }
-    .btn-power.on {
-      background: var(--accent); border-color: var(--accent-dark); color: #fff;
-    }
-    .btn-power:active { transform: scale(.93); }
-
-    /* Source & volume controls */
-    .controls { display: flex; flex-direction: column; gap: 10px; }
-
-    label.ctrl-label {
-      font-size: .72rem; font-weight: 600; color: var(--text-muted);
-      text-transform: uppercase; letter-spacing: .05em;
-      display: block; margin-bottom: 4px;
+      padding: 0;
+      font-size: .95rem;
     }
 
-    select.source-select {
-      width: 100%; padding: 8px 10px;
-      background: var(--surface2); border: 1px solid var(--border);
-      color: var(--text); border-radius: 8px; font-size: .9rem;
-      cursor: pointer; appearance: none;
-      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
-      background-repeat: no-repeat; background-position: right 10px center;
+    .zone-label {
+      font-size: .78rem;
+      color: var(--muted);
+    }
+
+    .power-icon-btn {
+      width: 48px;
+      height: 48px;
+      border: none;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 1.35rem;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(0,0,0,.18);
+    }
+
+    .power-icon-btn[data-state="off"] { background: var(--red); }
+    .power-icon-btn[data-state="on"]  { background: var(--green); }
+
+    .row { display: grid; gap: 6px; margin-bottom: 12px; }
+
+    label {
+      font-size: .88rem;
+      color: var(--muted);
+    }
+
+    select, input[type="range"] {
+      width: 100%;
+    }
+
+    select {
+      min-height: 44px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--card);
+      color: var(--text);
+      padding: 10px 12px;
+      font-size: .95rem;
     }
 
     .volume-row {
-      display: flex; align-items: center; gap: 8px;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: center;
     }
-    input[type=range] {
-      flex: 1; -webkit-appearance: none; appearance: none;
-      height: 6px; border-radius: 3px;
-      background: var(--surface2);
-      outline: none; cursor: pointer;
+
+    input[type="range"] {
+      accent-color: var(--blue);
+      height: 38px;
     }
-    input[type=range]::-webkit-slider-thumb {
-      -webkit-appearance: none; appearance: none;
-      width: 20px; height: 20px; border-radius: 50%;
-      background: var(--accent); cursor: pointer;
-      border: 2px solid var(--accent-dark);
-    }
-    input[type=range]::-moz-range-thumb {
-      width: 20px; height: 20px; border-radius: 50%;
-      background: var(--accent); cursor: pointer; border: none;
-    }
+
     .vol-value {
-      min-width: 28px; text-align: right;
-      font-size: .85rem; font-weight: 700; color: var(--accent);
+      min-width: 52px;
+      text-align: right;
+      font-weight: 700;
+      font-size: .9rem;
     }
 
-    /* Status chip */
-    .status-chip {
-      display: inline-block; margin-top: 12px;
-      padding: 3px 10px; border-radius: 20px;
-      font-size: .75rem; font-weight: 600;
-      background: var(--surface2); color: var(--text-muted);
+    .fine, .status {
+      font-size: .78rem;
+      color: var(--muted);
     }
-    .status-chip.on { background: #1db95422; color: var(--accent); }
-    .status-chip.err { background: #e74c3c22; color: var(--danger); }
 
-    /* ── Modal (Source Editor) ───────────────────────────────────────────── */
-    .modal-overlay {
-      display: none; position: fixed; inset: 0; z-index: 200;
-      background: rgba(0,0,0,.6); backdrop-filter: blur(3px);
-      align-items: center; justify-content: center;
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.45);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      padding: 14px;
     }
-    .modal-overlay.open { display: flex; }
+
     .modal {
-      background: var(--surface); border: 1px solid var(--border);
-      border-radius: var(--radius); padding: 24px;
-      width: min(420px, 92vw); box-shadow: var(--shadow);
-    }
-    .modal h2 { font-size: 1.05rem; margin-bottom: 18px; }
-    .modal-grid { display: grid; gap: 10px; }
-    .modal-row { display: flex; align-items: center; gap: 10px; }
-    .modal-row label { min-width: 68px; font-size: .85rem; color: var(--text-muted); }
-    .modal-row input {
-      flex: 1; padding: 8px 10px;
-      background: var(--surface2); border: 1px solid var(--border);
-      color: var(--text); border-radius: 8px; font-size: .9rem; outline: none;
-    }
-    .modal-row input:focus { border-color: var(--accent); }
-    .modal-footer { margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px; }
-    .btn-primary {
-      padding: 8px 20px; background: var(--accent); color: #fff;
-      border: none; border-radius: 8px; font-size: .9rem; cursor: pointer;
-      font-weight: 600;
-    }
-    .btn-primary:hover { background: var(--accent-dark); }
-    .btn-secondary {
-      padding: 8px 16px; background: var(--surface2); border: 1px solid var(--border);
-      color: var(--text); border-radius: 8px; font-size: .9rem; cursor: pointer;
+      width: min(520px, 100%);
+      background: var(--card);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+      padding: 16px;
+      max-height: 90vh;
+      overflow: auto;
     }
 
-    /* ── Icon picker ─────────────────────────────────────────────────────── */
-    .icon-picker-overlay {
-      display: none; position: fixed; inset: 0; z-index: 300;
-      background: rgba(0,0,0,.5); align-items: center; justify-content: center;
+    .modal h2 {
+      margin: 0 0 12px;
+      font-size: 1.1rem;
     }
-    .icon-picker-overlay.open { display: flex; }
-    .icon-picker {
-      background: var(--surface); border: 1px solid var(--border);
-      border-radius: var(--radius); padding: 20px;
-      width: min(340px, 90vw); box-shadow: var(--shadow);
-    }
-    .icon-picker h3 { font-size: .95rem; margin-bottom: 12px; }
-    .icon-grid {
-      display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px;
-    }
-    .icon-opt {
-      font-size: 1.5rem; text-align: center; cursor: pointer;
-      padding: 6px; border-radius: 8px;
-      transition: background .1s;
-    }
-    .icon-opt:hover { background: var(--surface2); }
 
-    /* ── Loading spinner ─────────────────────────────────────────────────── */
-    @keyframes spin { to { transform: rotate(360deg); } }
-    .spinner {
-      display: inline-block; width: 14px; height: 14px;
-      border: 2px solid var(--border); border-top-color: var(--accent);
-      border-radius: 50%;
-      animation: spin .7s linear infinite;
-      vertical-align: middle; margin-left: 6px;
+    .form-row {
+      display: grid;
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+
+    .modal input[type="text"] {
+      width: 100%;
+      min-height: 44px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--text);
+      padding: 10px 12px;
+      font-size: .95rem;
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+      margin-top: 16px;
+    }
+
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: 16px;
+      transform: translateX(-50%);
+      background: rgba(15,23,42,.96);
+      color: white;
+      padding: 9px 14px;
+      border-radius: 999px;
+      font-size: .85rem;
+      opacity: 0;
+      transition: opacity .15s ease;
+      pointer-events: none;
+      z-index: 200;
+      max-width: calc(100vw - 24px);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .toast.show { opacity: 1; }
+
+    @media (min-width: 700px) {
+      .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+
+    @media (min-width: 1050px) {
+      .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     }
   </style>
 </head>
 <body>
+  <div class="app">
+    <header class="header">
+      <div>
+        <h1>Monoprice 6-Zone Control</h1>
+        <div class="subtitle">Custom names, shared sources, live state, and saved settings</div>
+      </div>
+      <div class="toolbar">
+        <button id="editSourcesBtn" class="btn-chip">Edit Sources</button>
+        <button id="themeToggle" class="btn-chip">
+          <span id="themeIcon">🌞</span>
+          <span id="themeLabel">Light</span>
+        </button>
+      </div>
+    </header>
 
-<!-- ── Header ──────────────────────────────────────────────────────────────── -->
-<header>
-  <h1>🎵 <span>Home</span> Audio</h1>
-  <button class="hdr-btn" id="btnSources">🎛 Sources</button>
-  <button class="hdr-btn" id="btnTheme" title="Toggle theme">🌙</button>
-</header>
+    <main class="grid" id="zones"></main>
+  </div>
 
-<!-- ── Zone cards (populated by JS) ────────────────────────────────────────── -->
-<main id="zoneGrid"></main>
-
-<!-- ── Source editor modal ─────────────────────────────────────────────────── -->
-<div class="modal-overlay" id="sourceModal" role="dialog" aria-modal="true">
-  <div class="modal">
-    <h2>🎛 Edit Source Names</h2>
-    <div class="modal-grid" id="sourceInputs"></div>
-    <div class="modal-footer">
-      <button class="btn-secondary" id="btnSourceCancel">Cancel</button>
-      <button class="btn-primary"   id="btnSourceSave">Save</button>
+  <div class="modal-backdrop" id="sourceModalBackdrop">
+    <div class="modal">
+      <h2>Edit Source Names</h2>
+      <div id="sourceFields"></div>
+      <div class="modal-actions">
+        <button id="cancelSourcesBtn" class="btn-chip" type="button">Cancel</button>
+        <button id="saveSourcesBtn" class="btn-chip" type="button">Save</button>
+      </div>
     </div>
   </div>
-</div>
 
-<!-- ── Icon picker ─────────────────────────────────────────────────────────── -->
-<div class="icon-picker-overlay" id="iconPickerOverlay">
-  <div class="icon-picker">
-    <h3>Choose Icon</h3>
-    <div class="icon-grid" id="iconGrid"></div>
-  </div>
-</div>
+  <div class="toast" id="toast"></div>
 
-<script>
-'use strict';
+  <script>
+    // ---------- Settings and persistence ----------
 
-/* ── Constants ───────────────────────────────────────────────────────────── */
-const STORAGE_KEY    = 'monoprice_ui_settings_v1';
-const POLL_INTERVAL  = 30_000; // ms – how often to re-query amp state
-const ZONES          = [1, 2, 3, 4, 5, 6];
-const SOURCE_COUNT   = 6;
+    const SETTINGS_KEY = "monoprice_ui_settings_v1";
 
-const ZONE_ICONS = [
-  '🎵','🏠','🛋️','🍳','🛁','🛏️','🏡','🌿','🎸','📻',
-  '🔊','🎤','🎺','🎹','🎷','🏋️','📺','🌙','⭐','🔥',
-  '❄️','🌊','🌞','🌴','🍷','☕','🎮','📖','🛠️','💻',
-];
+    const ICONS = {
+      default: "🏠",
+      kitchen: "🍽️",
+      patio: "🌿",
+      living: "🛋️",
+      bedroom: "🛏️",
+      office: "💻",
+      garage: "🚗",
+      bath: "🚿",
+      media: "🎬",
+      kids: "🧸"
+    };
 
-const DEFAULTS = {
-  theme: 'dark',
-  sourceNames: Object.fromEntries(
-    Array.from({length: SOURCE_COUNT}, (_, i) => [i + 1, `Source ${i + 1}`])
-  ),
-  zones: Object.fromEntries(
-    ZONES.map((z, i) => [z, {
-      name: ['Living Room','Kitchen','Master Bed','Office','Patio','Garage'][i],
-      icon: ZONE_ICONS[i],
-    }])
-  ),
-};
+    const DEFAULT_SETTINGS = {
+      theme: "light",
+      sourceNames: {
+        1: "Source 1",
+        2: "Source 2",
+        3: "Source 3",
+        4: "Source 4",
+        5: "Source 5",
+        6: "Source 6"
+      },
+      zones: {
+        1: { name: "Kitchen",   icon: "kitchen" },
+        2: { name: "Patio",     icon: "patio" },
+        3: { name: "Living",    icon: "living" },
+        4: { name: "Bedroom",   icon: "bedroom" },
+        5: { name: "Office",    icon: "office" },
+        6: { name: "Garage",    icon: "garage" }
+      }
+    };
 
-/* ── Settings store ──────────────────────────────────────────────────────── */
-let settings = loadSettings();
-
-function loadSettings() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const saved = JSON.parse(raw);
-      // Deep merge with defaults so new keys always exist
-      return {
-        theme:       saved.theme       || DEFAULTS.theme,
-        sourceNames: { ...DEFAULTS.sourceNames, ...saved.sourceNames },
-        zones: Object.fromEntries(
-          ZONES.map(z => [z, { ...DEFAULTS.zones[z], ...(saved.zones?.[z] || {}) }])
-        ),
-      };
+    function clone(obj) {
+      return JSON.parse(JSON.stringify(obj));
     }
-  } catch (_) { /* ignore parse errors */ }
-  return JSON.parse(JSON.stringify(DEFAULTS));
-}
 
-function saveSettings() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
-}
-
-// Sync across browser tabs
-window.addEventListener('storage', (e) => {
-  if (e.key === STORAGE_KEY) {
-    settings = loadSettings();
-    applyTheme();
-    ZONES.forEach(z => updateZoneUI(z));
-  }
-});
-
-/* ── Theme ───────────────────────────────────────────────────────────────── */
-function applyTheme() {
-  document.documentElement.setAttribute('data-theme', settings.theme);
-  document.getElementById('btnTheme').textContent =
-    settings.theme === 'dark' ? '🌞' : '🌙';
-}
-
-document.getElementById('btnTheme').addEventListener('click', () => {
-  settings.theme = settings.theme === 'dark' ? 'light' : 'dark';
-  applyTheme();
-  saveSettings();
-});
-
-/* ── API helpers ─────────────────────────────────────────────────────────── */
-async function apiGet(url) {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
-}
-
-async function apiPost(url, body) {
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const j = await res.json().catch(() => ({}));
-    throw new Error(j.error || `HTTP ${res.status}`);
-  }
-  return res.json();
-}
-
-/* ── Zone card DOM builder ───────────────────────────────────────────────── */
-function buildZoneCard(zone) {
-  const cfg = settings.zones[zone];
-  const card = document.createElement('div');
-  card.className = 'zone-card off';
-  card.id = `zone-card-${zone}`;
-  card.innerHTML = `
-    <div class="card-header">
-      <span class="zone-icon" id="zone-icon-${zone}" title="Change icon">${cfg.icon}</span>
-      <div class="zone-name-wrap">
-        <input class="zone-name" id="zone-name-${zone}"
-               value="${escHtml(cfg.name)}" maxlength="24"
-               title="Click to rename" />
-        <div class="zone-num">Zone ${zone}</div>
-      </div>
-      <button class="btn-power" id="zone-power-${zone}" title="Power on/off">⏻</button>
-    </div>
-    <div class="controls">
-      <div>
-        <label class="ctrl-label">Source</label>
-        <select class="source-select" id="zone-source-${zone}">
-          ${Array.from({length: SOURCE_COUNT}, (_,i) =>
-            `<option value="${i+1}">${escHtml(settings.sourceNames[i+1])}</option>`
-          ).join('')}
-        </select>
-      </div>
-      <div>
-        <label class="ctrl-label">Volume</label>
-        <div class="volume-row">
-          <input type="range" id="zone-vol-${zone}" min="0" max="38" value="10" />
-          <span class="vol-value" id="zone-vol-val-${zone}">10</span>
-        </div>
-      </div>
-    </div>
-    <span class="status-chip" id="zone-status-${zone}">Loading…</span>
-  `;
-
-  document.getElementById('zoneGrid').appendChild(card);
-  attachZoneListeners(zone);
-}
-
-/* ── Zone event listeners ────────────────────────────────────────────────── */
-function attachZoneListeners(zone) {
-  // Power toggle
-  document.getElementById(`zone-power-${zone}`).addEventListener('click', async () => {
-    const btn = document.getElementById(`zone-power-${zone}`);
-    const current = btn.classList.contains('on');
-    setZoneStatusText(zone, 'loading');
-    try {
-      await apiPost(`/api/zone/${zone}/power`, { on: !current });
-      setZonePowerUI(zone, !current);
-    } catch (e) { setZoneStatusText(zone, 'error', e.message); }
-  });
-
-  // Source change
-  document.getElementById(`zone-source-${zone}`).addEventListener('change', async (e) => {
-    const source = parseInt(e.target.value, 10);
-    try {
-      await apiPost(`/api/zone/${zone}/source`, { source });
-      refreshZoneStatus(zone);
-    } catch (e) { setZoneStatusText(zone, 'error', e.message); }
-  });
-
-  // Volume slider (debounced – send command 300ms after last move)
-  let volTimer;
-  const volSlider = document.getElementById(`zone-vol-${zone}`);
-  volSlider.addEventListener('input', (e) => {
-    document.getElementById(`zone-vol-val-${zone}`).textContent = e.target.value;
-    clearTimeout(volTimer);
-    volTimer = setTimeout(async () => {
+    function loadSettings() {
       try {
-        await apiPost(`/api/zone/${zone}/volume`, { volume: parseInt(e.target.value, 10) });
-      } catch (e) { setZoneStatusText(zone, 'error', e.message); }
-    }, 300);
-  });
+        const raw = localStorage.getItem(SETTINGS_KEY);
+        if (!raw) return clone(DEFAULT_SETTINGS);
+        const parsed = JSON.parse(raw);
+        return {
+          ...clone(DEFAULT_SETTINGS),
+          ...parsed,
+          sourceNames: { ...DEFAULT_SETTINGS.sourceNames, ...(parsed.sourceNames || {}) },
+          zones: { ...DEFAULT_SETTINGS.zones, ...(parsed.zones || {}) }
+        };
+      } catch {
+        return clone(DEFAULT_SETTINGS);
+      }
+    }
 
-  // Zone name edit (save on blur/enter)
-  const nameInput = document.getElementById(`zone-name-${zone}`);
-  const saveName = () => {
-    settings.zones[zone].name = nameInput.value.trim() || DEFAULTS.zones[zone].name;
-    nameInput.value = settings.zones[zone].name;
-    saveSettings();
-  };
-  nameInput.addEventListener('blur', saveName);
-  nameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') nameInput.blur(); });
+    let settings = loadSettings();
 
-  // Icon click → open picker
-  document.getElementById(`zone-icon-${zone}`)
-    .addEventListener('click', () => openIconPicker(zone));
-}
+    function saveSettings() {
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    }
 
-/* ── Zone state UI helpers ───────────────────────────────────────────────── */
-function setZonePowerUI(zone, on) {
-  const card = document.getElementById(`zone-card-${zone}`);
-  const btn  = document.getElementById(`zone-power-${zone}`);
-  card.classList.toggle('off', !on);
-  btn.classList.toggle('on', on);
-  const srcName = settings.sourceNames[
-    parseInt(document.getElementById(`zone-source-${zone}`).value, 10)
-  ];
-  setZoneStatusText(zone, on ? 'on' : 'off', on ? `▶ ${srcName}` : 'Off');
-}
+    function sourceLabel(source) {
+      return settings.sourceNames[String(source)] || `Source ${source}`;
+    }
 
-function setZoneStatusText(zone, state, msg) {
-  const chip = document.getElementById(`zone-status-${zone}`);
-  chip.className = `status-chip ${state === 'on' ? 'on' : state === 'error' ? 'err' : ''}`;
-  if (state === 'loading') {
-    chip.innerHTML = 'Updating <span class="spinner"></span>';
-  } else {
-    chip.textContent = msg || (state === 'on' ? 'On' : 'Off');
-  }
-}
+    function zoneIcon(key) {
+      return ICONS[key] || ICONS.default;
+    }
 
-function applyZoneState(zone, state) {
-  // Power
-  const card  = document.getElementById(`zone-card-${zone}`);
-  const btn   = document.getElementById(`zone-power-${zone}`);
-  card.classList.toggle('off', !state.power);
-  btn.classList.toggle('on',   state.power);
+    // ---------- Theme ----------
 
-  // Source dropdown
-  const sel = document.getElementById(`zone-source-${zone}`);
-  sel.value = state.source;
+    function applyTheme(theme) {
+      document.documentElement.setAttribute("data-theme", theme);
+      document.getElementById("themeLabel").textContent = theme === "dark" ? "Dark" : "Light";
+      document.getElementById("themeIcon").textContent = theme === "dark" ? "🌙" : "🌞";
+    }
 
-  // Volume
-  const slider = document.getElementById(`zone-vol-${zone}`);
-  const valEl  = document.getElementById(`zone-vol-val-${zone}`);
-  slider.value = state.volume;
-  valEl.textContent = state.volume;
+    applyTheme(settings.theme);
 
-  // Status chip
-  const srcName = settings.sourceNames[state.source] || `Source ${state.source}`;
-  setZoneStatusText(zone, state.power ? 'on' : 'off',
-    state.power ? `▶ ${srcName}` : 'Off');
-}
+    document.getElementById("themeToggle").onclick = () => {
+      settings.theme = settings.theme === "light" ? "dark" : "light";
+      saveSettings();
+      applyTheme(settings.theme);
+    };
 
-function updateZoneUI(zone) {
-  // Refresh zone name/icon/source labels without touching amp state
-  const cfg = settings.zones[zone];
-  document.getElementById(`zone-icon-${zone}`).textContent = cfg.icon;
-  document.getElementById(`zone-name-${zone}`).value = cfg.name;
-  // Rebuild source dropdown labels
-  const sel = document.getElementById(`zone-source-${zone}`);
-  const cur = sel.value;
-  sel.innerHTML = Array.from({length: SOURCE_COUNT}, (_,i) =>
-    `<option value="${i+1}">${escHtml(settings.sourceNames[i+1])}</option>`
-  ).join('');
-  sel.value = cur;
-}
+    // ---------- Toast ----------
 
-/* ── Fetch amp state ─────────────────────────────────────────────────────── */
-async function refreshZoneStatus(zone) {
-  try {
-    const state = await apiGet(`/api/state?zone=${zone}`);
-    applyZoneState(zone, state);
-  } catch (e) {
-    setZoneStatusText(zone, 'error', 'No response');
-  }
-}
+    const toast = document.getElementById("toast");
 
-async function refreshAllZones() {
-  // Stagger requests by 150ms to avoid flooding the serial port
-  for (const z of ZONES) {
-    await refreshZoneStatus(z);
-    await delay(150);
-  }
-}
+    function showToast(msg) {
+      toast.textContent = msg;
+      toast.classList.add("show");
+      clearTimeout(window.toastTimer);
+      window.toastTimer = setTimeout(() => toast.classList.remove("show"), 1200);
+    }
 
-/* ── Source editor modal ─────────────────────────────────────────────────── */
-document.getElementById('btnSources').addEventListener('click', openSourceModal);
-document.getElementById('btnSourceCancel').addEventListener('click', closeSourceModal);
-document.getElementById('btnSourceSave').addEventListener('click', saveSourceModal);
+    // ---------- API helpers ----------
 
-function openSourceModal() {
-  const container = document.getElementById('sourceInputs');
-  container.innerHTML = '';
-  for (let s = 1; s <= SOURCE_COUNT; s++) {
-    container.insertAdjacentHTML('beforeend', `
-      <div class="modal-row">
-        <label for="src-inp-${s}">Source ${s}</label>
-        <input id="src-inp-${s}" type="text" maxlength="20"
-               value="${escHtml(settings.sourceNames[s])}" />
-      </div>`);
-  }
-  document.getElementById('sourceModal').classList.add('open');
-}
+    async function post(url, body) {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Request failed");
+      return data;
+    }
 
-function closeSourceModal() {
-  document.getElementById('sourceModal').classList.remove('open');
-}
+    async function getJson(url) {
+      const res = await fetch(url);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Request failed");
+      return data;
+    }
 
-function saveSourceModal() {
-  for (let s = 1; s <= SOURCE_COUNT; s++) {
-    const val = document.getElementById(`src-inp-${s}`).value.trim();
-    settings.sourceNames[s] = val || `Source ${s}`;
-  }
-  saveSettings();
-  closeSourceModal();
-  ZONES.forEach(z => updateZoneUI(z));
-}
+    // ---------- Zones UI ----------
 
-// Close modal on overlay click
-document.getElementById('sourceModal').addEventListener('click', (e) => {
-  if (e.target === e.currentTarget) closeSourceModal();
-});
+    const zonesContainer = document.getElementById("zones");
+    let zoneCards = [];
 
-/* ── Icon picker ─────────────────────────────────────────────────────────── */
-let _iconPickerZone = null;
+    function buildSourceOptions(select) {
+      select.innerHTML = "";
+      for (let i = 1; i <= 6; i++) {
+        const opt = document.createElement("option");
+        opt.value = String(i);
+        opt.textContent = sourceLabel(i);
+        select.appendChild(opt);
+      }
+    }
 
-function openIconPicker(zone) {
-  _iconPickerZone = zone;
-  const grid = document.getElementById('iconGrid');
-  grid.innerHTML = ZONE_ICONS.map(ic =>
-    `<div class="icon-opt" data-icon="${ic}">${ic}</div>`
-  ).join('');
-  document.getElementById('iconPickerOverlay').classList.add('open');
-}
+    function zoneCard(zoneId) {
+      const zConfig = settings.zones[String(zoneId)] || { name: `Zone ${zoneId}`, icon: "default" };
+      const el = document.createElement("section");
+      el.className = "zone";
 
-document.getElementById('iconGrid').addEventListener('click', (e) => {
-  const opt = e.target.closest('.icon-opt');
-  if (!opt || _iconPickerZone === null) return;
-  const icon = opt.dataset.icon;
-  settings.zones[_iconPickerZone].icon = icon;
-  document.getElementById(`zone-icon-${_iconPickerZone}`).textContent = icon;
-  saveSettings();
-  document.getElementById('iconPickerOverlay').classList.remove('open');
-  _iconPickerZone = null;
-});
+      el.innerHTML = `
+        <div class="zone-head">
+          <div class="zone-title-wrap">
+            <div class="zone-name-row">
+              <span class="zone-icon" data-zone-icon>${zoneIcon(zConfig.icon)}</span>
+              <h2 class="zone-title" data-zone-name>${zConfig.name}</h2>
+              <button class="zone-edit" type="button">✏️</button>
+            </div>
+            <span class="zone-label">Zone ${zoneId}</span>
+          </div>
+          <button class="power-icon-btn" type="button" data-state="off" aria-label="Toggle power">⏻</button>
+        </div>
 
-document.getElementById('iconPickerOverlay').addEventListener('click', (e) => {
-  if (e.target === e.currentTarget) {
-    document.getElementById('iconPickerOverlay').classList.remove('open');
-    _iconPickerZone = null;
-  }
-});
+        <div class="row">
+          <label>Source</label>
+          <select></select>
+        </div>
 
-/* ── Utility ─────────────────────────────────────────────────────────────── */
-function escHtml(s) {
-  return String(s)
-    .replace(/&/g,'&amp;').replace(/"/g,'&quot;')
-    .replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
+        <div class="row">
+          <label>Volume (1–38)</label>
+          <div class="volume-row">
+            <input type="range" min="1" max="38" value="20" />
+            <div class="vol-value">20</div>
+          </div>
+          <div class="fine">Slide, then release to send the command.</div>
+          <div class="status" data-status>Loading...</div>
+        </div>
+      `;
 
-function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+      const nameEl = el.querySelector("[data-zone-name]");
+      const iconEl = el.querySelector("[data-zone-icon]");
+      const editBtn = el.querySelector(".zone-edit");
+      const powerBtn = el.querySelector(".power-icon-btn");
+      const select = el.querySelector("select");
+      const slider = el.querySelector('input[type="range"]');
+      const volValue = el.querySelector(".vol-value");
+      const status = el.querySelector("[data-status]");
 
-/* ── Bootstrap ───────────────────────────────────────────────────────────── */
-applyTheme();
-ZONES.forEach(z => buildZoneCard(z));
-refreshAllZones();
+      buildSourceOptions(select);
 
-// Poll amp state every POLL_INTERVAL ms
-setInterval(refreshAllZones, POLL_INTERVAL);
-</script>
+      // Edit zone name & icon
+      editBtn.onclick = () => {
+        const current = settings.zones[String(zoneId)] || { name: `Zone ${zoneId}`, icon: "default" };
+        const newName = prompt("Zone name", current.name);
+        if (newName === null) return;
+        const newIcon = prompt("Zone icon key", current.icon);
+
+        settings.zones[String(zoneId)] = {
+          name: (newName.trim() || current.name),
+          icon: (newIcon && newIcon.trim()) ? newIcon.trim() : current.icon
+        };
+        saveSettings();
+        renderZones();
+      };
+
+      // Power toggle
+      powerBtn.onclick = async () => {
+        const currentState = powerBtn.getAttribute("data-state") === "on";
+        const nextState = !currentState;
+        status.textContent = "Sending...";
+        try {
+          await post(`/api/zone/${zoneId}/power`, { on: nextState });
+          powerBtn.setAttribute("data-state", nextState ? "on" : "off");
+          status.textContent = nextState ? "On" : "Off";
+          showToast(`${nameEl.textContent}: ${nextState ? "On" : "Off"}`);
+        } catch (e) {
+          status.textContent = "Error";
+          showToast(e.message);
+        }
+      };
+
+      // Source change
+      select.onchange = async () => {
+        status.textContent = "Sending...";
+        try {
+          await post(`/api/zone/${zoneId}/source`, { source: Number(select.value) });
+          status.textContent = `Source: ${sourceLabel(select.value)}`;
+          showToast(`${nameEl.textContent}: ${sourceLabel(select.value)}`);
+        } catch (e) {
+          status.textContent = "Error";
+          showToast(e.message);
+        }
+      };
+
+      // Volume slider
+      slider.oninput = () => {
+        volValue.textContent = slider.value;
+      };
+
+      slider.onchange = async () => {
+        status.textContent = "Sending...";
+        let vol = Number(slider.value);
+        if (vol < 1) vol = 1;
+        if (vol > 38) vol = 38;
+        try {
+          await post(`/api/zone/${zoneId}/volume`, { volume: vol });
+          slider.value = String(vol);
+          volValue.textContent = String(vol);
+          status.textContent = `Vol ${vol}`;
+          showToast(`${nameEl.textContent}: Vol ${vol}`);
+        } catch (e) {
+          status.textContent = "Error";
+          showToast(e.message);
+        }
+      };
+
+      // State refresh (power/source/volume)
+      el.refreshState = async () => {
+        try {
+          const data = await getJson(`/api/state?zone=${zoneId}`);
+          // Power
+          if (typeof data.power === "boolean") {
+            powerBtn.setAttribute("data-state", data.power ? "on" : "off");
+          } else {
+            powerBtn.setAttribute("data-state", "off");
+          }
+
+          // Source
+          if (data.source != null) {
+            const src = String(data.source);
+            if (["1","2","3","4","5","6"].includes(src)) {
+              select.value = src;
+            }
+          }
+
+          // Volume (1–38)
+          if (data.volume != null) {
+            let vol = Number(data.volume);
+            if (!Number.isFinite(vol)) vol = 20;
+            if (vol < 1) vol = 1;
+            if (vol > 38) vol = 38;
+            slider.value = String(vol);
+            volValue.textContent = String(vol);
+          }
+
+          if (data.power === true && data.source != null) {
+            status.textContent = `Source: ${sourceLabel(select.value)}`;
+          } else if (data.power === false) {
+            status.textContent = "Off";
+          } else {
+            status.textContent = "Unknown";
+          }
+        } catch {
+          status.textContent = "Offline";
+        }
+      };
+
+      return el;
+    }
+
+    function renderZones() {
+      zonesContainer.innerHTML = "";
+      zoneCards = [];
+      for (let i = 1; i <= 6; i++) {
+        const card = zoneCard(i);
+        zoneCards.push(card);
+        zonesContainer.appendChild(card);
+      }
+      refreshAll();
+    }
+
+    async function refreshAll() {
+      await Promise.all(zoneCards.map(z => z.refreshState()));
+    }
+
+    // ---------- Source name modal ----------
+
+    const modalBackdrop = document.getElementById("sourceModalBackdrop");
+    const sourceFields = document.getElementById("sourceFields");
+
+    function openSourceModal() {
+      sourceFields.innerHTML = "";
+      for (let i = 1; i <= 6; i++) {
+        const row = document.createElement("div");
+        row.className = "form-row";
+        row.innerHTML = `
+          <label for="src-${i}">Source ${i}</label>
+          <input id="src-${i}" type="text" value="${settings.sourceNames[String(i)] || `Source ${i}`}" />
+        `;
+        sourceFields.appendChild(row);
+      }
+      modalBackdrop.style.display = "flex";
+    }
+
+    function closeSourceModal() {
+      modalBackdrop.style.display = "none";
+    }
+
+    document.getElementById("editSourcesBtn").onclick = openSourceModal;
+    document.getElementById("cancelSourcesBtn").onclick = closeSourceModal;
+    document.getElementById("saveSourcesBtn").onclick = () => {
+      for (let i = 1; i <= 6; i++) {
+        const input = document.getElementById(`src-${i}`);
+        settings.sourceNames[String(i)] = input.value.trim() || `Source ${i}`;
+      }
+      saveSettings();
+      closeSourceModal();
+      renderZones();
+    };
+
+    modalBackdrop.addEventListener("click", e => {
+      if (e.target === modalBackdrop) closeSourceModal();
+    });
+
+    // ---------- Initial render and polling ----------
+
+    renderZones();
+    setInterval(refreshAll, 30000);
+
+    // Sync settings across tabs
+    window.addEventListener("storage", e => {
+      if (e.key === SETTINGS_KEY) {
+        settings = loadSettings();
+        applyTheme(settings.theme);
+        renderZones();
+      }
+    });
+  </script>
 </body>
 </html>
