@@ -111,7 +111,7 @@ function _doSend(cmd) {
     }, REPLY_TIMEOUT);
 
     // IMPORTANT: terminate with \n, not \r
-    serial.write(cmd + '\n', 'ascii', (writeErr) => {
+    serial.write(cmd + '\r\n', 'ascii', (writeErr) => {
       if (writeErr) { cleanup(); reject(writeErr); return; }
       serial.drain((drainErr) => {
         if (drainErr) { cleanup(); reject(drainErr); }
