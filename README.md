@@ -1,379 +1,247 @@
-# Monoprice 6‑Zone Audio Web UI
+# 🎵 Monoprice 10761 – RS-232 Web Controller
 
-A mobile‑friendly web interface for the Monoprice 6‑zone whole‑home audio amplifier (model 10761), running on a Raspberry Pi with a USB‑to‑serial adapter. The app lets you control each zone’s power, source, and volume, with:
+A clean, mobile-first web application to control a **Monoprice 10761 6-zone whole-home audio amplifier** over RS-232 from a Raspberry Pi. Control all six zones from any phone, tablet, or browser on your local network — no app install required.
 
-- Per‑zone names and icons (Kitchen, Patio, etc.).
-- Shared, editable source names.
-- Light/dark theme toggle.
-- Live state polling from the amp.
-- All UI configuration persisted in the browser via `localStorage`.[^1][^2]
+![Node.js](https://img.shields.io/badge/Node.js-20%20LTS-green?logo=node.js)
+![Express](https://img.shields.io/badge/Express-4.18-lightgrey?logo=express)
+![SerialPort](https://img.shields.io/badge/serialport-12-blue)
+![License](https://img.shields.io/badge/license-MIT-blue)
 
-The Monoprice 6‑zone amp supports RS‑232 control at 9600 8‑N‑1, which is well suited to a Raspberry Pi plus USB‑to‑serial adapter.[^3][^4]
+---
 
-***
+## Screenshots
 
-## 1. Requirements
+| Dark Mode | Light Mode |
+|-----------|------------|
+| Six zone cards with power, source, and volume controls | Same UI with light theme toggled via 🌞/🌙 button |
 
-- Raspberry Pi running Raspberry Pi OS or similar.
-- Monoprice 6‑zone whole‑home audio amplifier (model 10761).
-- USB‑to‑serial adapter (RS‑232 to USB) connected between Pi and amp.
-- Node.js (with npm) installed on the Pi.[^5][^6]
+---
 
-***
+## Features
 
-## 2. Installation
+- 🎛 **Full amp control** — power on/off, source select (6 inputs), volume (0–38) per zone
+- 📱 **Mobile-first responsive grid** — 1 col (phone) → 2 col (tablet) → 3 col (desktop)
+- 🌗 **Light / dark theme** toggle, persisted server-side
+- ✏️ **Inline zone name editing** — click any zone name, type, blur to save
+- 😀 **Emoji icon picker** — 30 icons, tap the zone emoji to change it
+- 🎛 **Source name editor** — rename all 6 inputs (e.g. "Apple TV", "Vinyl", "Spotify")
+- 🔄 **Multi-device sync** — config polls every 60 s so all browsers stay in sync
+- 💾 **Zero client-side persistence** — no localStorage; all state lives in `config.json` on the server
+- ⚡ **No build step** — single `index.html` with embedded CSS + JS (vanilla, no frameworks)
+- 🔌 **Graceful offline mode** — server starts even if serial port is unavailable; banner alerts you
 
-### 2.1. Clone or copy the project
+---
 
-On the Pi:
+## Hardware Requirements
 
-```bash
-mkdir -p /data/monoprice-audio-web
-cd /data/monoprice-audio-web
-# Copy server.js, package.json, public/index.html into this directory
+| Item | Details |
+|------|---------|
+| Amplifier | Monoprice 10761 6-Zone Whole-Home Audio Amplifier |
+| Controller | Raspberry Pi (any model with USB; Pi 4 recommended) |
+| Adapter | USB-to-Serial adapter (USB-A → DB9 male plug) |
+| Cable | Straight-through DB9 cable (**not** null-modem/crossover) |
+
+### DB9 Cable Pinout
+
+The amp uses a **straight-through** cable — same pin numbers on both ends:
+
+| Signal | DB9 Pin |
+|--------|---------|
+| RX     | 2       |
+| TX     | 3       |
+| GND    | 5       |
+
+> ⚠️ The amp has a **female** DB9 socket. Your USB adapter must present a **male** DB9 plug.
+
+---
+
+## Project Structure
+
+```
+/opt/monoprice-amp/
+├── package.json        # Dependencies: express ^4.18, serialport ^12
+├── server.js           # Backend: Express API + RS-232 serial logic + config I/O
+├── config.json         # Auto-created on first run; stores theme, zone names, source names
+├── SETUP.md            # Raspberry Pi install + systemd service instructions
+└── public/
+    └── index.html      # Full SPA — HTML + CSS + JS, no build step required
 ```
 
-Ensure the directory owner matches the user you’ll run the service as (e.g., `admin`):
+---
 
-```bash
-sudo chown -R admin:admin /data/monoprice-audio-web
-```
+## Quick Start
 
-
-### 2.2. Install Node.js and npm
-
-If `npm` is missing, installing from NodeSource is usually the most reliable on Raspberry Pi OS.[^6][^7][^8]
+### 1. Install Node.js 20 LTS
 
 ```bash
 curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-sudo apt install -y nodejs
-node -v
-npm -v
+sudo apt-get install -y nodejs
 ```
 
-You should see valid versions for both `node` and `npm`. If `npm` is still not found, check PATH and that `nodejs` installed correctly.[^8][^9]
-
-### 2.3. Install app dependencies
-
-From the project directory:
+### 2. Install the app
 
 ```bash
-cd /data/monoprice-audio-web
-npm install
+sudo mkdir -p /opt/monoprice-amp/public
+# Copy server.js, package.json into /opt/monoprice-amp/
+# Copy public/index.html into /opt/monoprice-amp/public/
+cd /opt/monoprice-amp && npm install
 ```
 
-This installs `express`, `cors`, and `serialport`, which provide the web server and serial communication components.[^10]
-
-### 2.4. USB serial permissions
-
-On Raspberry Pi OS, USB‑serial devices typically show up as `/dev/ttyUSB0` or `/dev/ttyACM0` and require membership in the `dialout` group.[^11][^12]
+### 3. Grant serial port access
 
 ```bash
-ls /dev/ttyUSB*
-sudo usermod -aG dialout admin
-sudo reboot
+sudo usermod -aG dialout $USER
+# Log out and back in for this to take effect
 ```
 
-After reboot, confirm you can access the device as your user.
-
-***
-
-## 3. Running the app manually
-
-From `/data/monoprice-audio-web`:
+### 4. Run it
 
 ```bash
-SERIAL_PATH=/dev/ttyUSB0 PORT=3000 npm start
+cd /opt/monoprice-amp
+SERIAL_PATH=/dev/ttyUSB0 PORT=3000 node server.js
 ```
 
-Then from another machine on the LAN, visit:
-
-```text
-http://<pi-ip-address>:3000
+Open from any device on your network:
+```
+http://<raspberry-pi-ip>:3000
 ```
 
-You should see the 6‑zone dashboard.
+### 5. Run as a service (optional but recommended)
 
-***
-
-## 4. systemd service
-
-To run the app as a service on boot, create:
-
-`/etc/systemd/system/monoprice-audio.service`:
-
-```ini
-[Unit]
-Description=Monoprice Audio Web UI
-After=network.target
-
-[Service]
-Type=simple
-User=admin
-Group=admin
-WorkingDirectory=/data/monoprice-audio-web
-Environment=PORT=3000
-Environment=SERIAL_PATH=/dev/ttyUSB0
-ExecStart=/usr/bin/npm start
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-```
-
-> Important: `User=` and `Group=` must match an actual local user (e.g., `admin`). Setting a non‑existent or wrong user is a common cause of `status=217/USER` failures.[^13][^14][^15]
-
-Reload and start:
+See [SETUP.md](SETUP.md) for full systemd instructions. The short version:
 
 ```bash
-sudo systemctl daemon-reload
-sudo systemctl enable monoprice-audio
-sudo systemctl start monoprice-audio
-sudo systemctl status monoprice-audio
+sudo systemctl enable --now monoprice-amp
+sudo journalctl -u monoprice-amp -f   # watch live logs
 ```
 
-Now the app will start on boot and listen on `PORT` (default 3000).
+---
 
-***
+## REST API Reference
 
-## 5. Web UI features
+### Amp Control
 
-### 5.1. Zones
+| Method | Endpoint | Body | Response |
+|--------|----------|------|----------|
+| `GET` | `/api/health` | — | `{ ok: true, serialOpen: bool }` |
+| `GET` | `/api/state?zone=N` | — | `{ zone, power, source, volume }` |
+| `POST` | `/api/zone/:zone/power` | `{ "on": true }` | `{ ok, zone, power }` |
+| `POST` | `/api/zone/:zone/source` | `{ "source": 1–6 }` | `{ ok, zone, source }` |
+| `POST` | `/api/zone/:zone/volume` | `{ "volume": 0–38 }` | `{ ok, zone, volume }` |
 
-- 6 cards, one per zone.
-- Each card shows:
-    - Icon (emoji).
-    - Zone name (e.g., Kitchen, Patio).
-    - Single power toggle button.
-    - Source select dropdown.
-    - Volume slider and status text.
+### Configuration
 
+| Method | Endpoint | Body | Response |
+|--------|----------|------|----------|
+| `GET` | `/api/config` | — | Full config JSON |
+| `PATCH` | `/api/config` | Partial config object | Updated full config |
 
-### 5.2. Zone names and icons
+**`PATCH` examples:**
 
-- Click the ✏️ icon on a zone card to rename the zone and change its icon key.
-- Icon keys map to emojis (e.g., `kitchen`, `patio`, `living`, `garage`).
-- The UI stores zone names and icons in a `settings` object in `localStorage`, which persists between sessions for the same origin.[^2][^1]
+```bash
+# Change theme
+curl -X PATCH http://pi:3000/api/config   -H "Content-Type: application/json"   -d '{"theme":"light"}'
 
+# Rename zone 2
+curl -X PATCH http://pi:3000/api/config   -H "Content-Type: application/json"   -d '{"zones":{"2":{"name":"Dining Room"}}}'
 
-### 5.3. Source names (shared across zones)
+# Rename source 3
+curl -X PATCH http://pi:3000/api/config   -H "Content-Type: application/json"   -d '{"sourceNames":{"3":"Apple TV"}}'
+```
 
-- Click **Edit Sources** in the header.
-- A modal opens with text fields for Source 1–6.
-- Updating these names changes how each source appears in all zone dropdowns and status messages.
-- Source names are stored once in `settings.sourceNames` and reused across every zone.[^16][^17]
+---
 
+## Configuration File (`config.json`)
 
-### 5.4. Theme (light/dark)
-
-- Click the theme button (🌞 / 🌙) to toggle light or dark mode.
-- Theme choice is stored in `settings.theme` and applied on every load.[^1]
-
-***
-
-## 6. Configuration persistence
-
-The web UI keeps user preferences in the browser using `localStorage`, which provides persistent, client‑side key/value storage scoped to the app’s origin.[^2][^1]
-
-### 6.1. What is persisted
-
-All of these go into one JSON object under `monoprice_ui_settings_v1`:
-
-- `theme` – `"light"` or `"dark"`.
-- `sourceNames` – map of `1..6` → label.
-- `zones` – per‑zone `name` and `icon` (for zones 1–6).
-
-On every UI change (rename zone, change icon, edit sources, toggle theme), the app updates the in‑memory `settings` object and calls `localStorage.setItem(...)` to save it.[^18][^19]
-
-### 6.2. Reload behavior
-
-- On page load, the app:
-    - Reads `monoprice_ui_settings_v1`.
-    - Merges it with a default configuration.
-    - Applies theme.
-    - Renders zones using saved names/icons/source labels.
-- On a refresh or browser restart, the configuration is restored from `localStorage`. Data is retained until cleared manually or the browser storage is wiped.[^20][^1]
-
-
-### 6.3. Multiple tabs
-
-The app listens to the `storage` event to sync settings if you have multiple tabs open:
-
-- When settings change in one tab, other tabs receive a `storage` event and reload the configuration and UI.[^21][^22]
-
-***
-
-## 7. Amplifier communication
-
-The Monoprice 10761 uses an RS‑232 protocol for zone control. Community examples and documentation indicate commands like `!11P1` to turn on zone 1 and `?11P` to query its power state, with CR line endings and 9600 baud.[^4][^23][^3]
-
-This service:
-
-- Sends commands like:
-    - `!ZZP1` / `!ZZP0` for power on/off for zone `Z`.
-    - `!ZZSx` for source `x`.
-    - `!ZZVnn` for volume.
-- Polls state using `/api/state?zone=Z`, which:
-    - Issues RS‑232 queries for power, source, and volume.
-    - Parses numeric values out of the responses.
-    - Returns JSON like:
+Auto-created on first run with these defaults:
 
 ```json
 {
-  "zone": 1,
-  "power": true,
-  "source": 2,
-  "volume": 35
+  "theme": "dark",
+  "sourceNames": {
+    "1": "Source 1", "2": "Source 2", "3": "Source 3",
+    "4": "Source 4", "5": "Source 5", "6": "Source 6"
+  },
+  "zones": {
+    "1": { "name": "Living Room", "icon": "🛋️" },
+    "2": { "name": "Kitchen",     "icon": "🍳" },
+    "3": { "name": "Master Bed",  "icon": "🛏️" },
+    "4": { "name": "Office",      "icon": "💻" },
+    "5": { "name": "Patio",       "icon": "🌿" },
+    "6": { "name": "Garage",      "icon": "🏠" }
+  }
 }
 ```
 
+All changes made through the UI are written back atomically (write to `.tmp` → rename).
 
-> Note: You may need to adjust the exact command strings to match the protocol table in your Monoprice manual if your firmware variant differs.[^3][^4]
+---
 
-***
+## Environment Variables
 
-## 8. Troubleshooting
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PORT` | `3000` | HTTP server port |
+| `SERIAL_PATH` | `/dev/ttyUSB0` | Serial device path |
+| `CONFIG_PATH` | `./config.json` | Path to the UI config file |
 
-### 8.1. `npm: command not found`
+---
 
-If `npm` is missing:
+## RS-232 Protocol Notes
 
-```bash
-node -v
-npm -v
-```
+These behaviors were validated against real hardware. The implementation strictly follows them.
 
-If `npm` is not installed or is too old, install from NodeSource:
+| Detail | Value |
+|--------|-------|
+| Baud rate | 9600 |
+| Frame | 8-N-1 |
+| Command terminator | `\r\n` (CR+LF, 0x0D 0x0A) — `\r` alone or `\n` alone cause "Command Error." |
+| Zone prefix | Controller ID (`1`) + zone digit (`1`–`6`) → `11`–`16` |
+| Query response | `>` + 22 ASCII digits; may arrive in chunks (200 ms settle timer used) |
+| Set command response | **None** — power/source/volume commands produce no response; drain only |
 
-```bash
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-sudo apt install -y nodejs
-node -v
-npm -v
-```
+> ⚠️ Some Monoprice firmware manuals document a two-digit zone format (`11`–`16` without the
+> controller prefix). **This format causes "Command Error." on this unit.** The correct format
+> is always `1<zone-digit>`, e.g. zone 4 → `14`.
 
-Raspberry Pi users often report that `nodejs` from the default repo may not include a modern `npm`, so using NodeSource is a common fix.[^7][^6][^8]
+### Command Reference
 
-### 8.2. Service status shows `status=217/USER`
+| Action | Command | Example (zone 1) |
+|--------|---------|-----------------|
+| Query state | `?1<Z>\r\n` | `?11\r\n` |
+| Power on | `<1<Z>PR01\r\n` | `<11PR01\r\n` |
+| Power off | `<1<Z>PR00\r\n` | `<11PR00\r\n` |
+| Set source | `<1<Z>CH0N\r\n` | `<11CH02\r\n` |
+| Set volume | `<1<Z>VO##\r\n` | `<11VO15\r\n` |
 
-Run:
+---
 
-```bash
-sudo systemctl status monoprice-audio
-```
+## Troubleshooting
 
-If you see `code=exited, status=217/USER`, it means systemd can’t run the process as the configured user:
+| Symptom | Fix |
+|---------|-----|
+| ⚠️ Offline banner at top | Check `SERIAL_PATH`; confirm `dialout` group membership (re-login required) |
+| "Command Error." in logs | Verify straight-through DB9 cable; confirm zone range is 1–6 |
+| Zone query times out | Check baud is 9600; confirm amp is powered on; reseat USB adapter |
+| Can't reach `:3000` from LAN | `sudo ufw allow 3000` |
+| `config.json` not saving | Check write permissions: `ls -la /opt/monoprice-amp/` |
+| Service won't start | Confirm `User=` in unit file matches your Pi username; check `which node` path |
 
-- Confirm your service file has the correct user:
+---
 
-```bash
-sudo systemctl cat monoprice-audio
-```
+## Tech Stack
 
-- If the file says `User=pi` but your login is `admin`, change it to:
+| Layer | Technology |
+|-------|-----------|
+| Runtime | Node.js 20 LTS |
+| HTTP server | Express 4.18 |
+| Serial communication | serialport 12 (raw Buffer mode, no parser) |
+| Frontend | Vanilla JS + CSS custom properties (no frameworks, no build step) |
+| Config persistence | JSON flat file with atomic writes |
+| Process management | systemd |
 
-```ini
-User=admin
-Group=admin
-```
+---
 
-- Reload and restart:
+## License
 
-```bash
-sudo systemctl daemon-reload
-sudo systemctl restart monoprice-audio
-```
-
-
-Systemd docs and community answers confirm that `217/USER` is specifically tied to an invalid or missing User in the unit.[^14][^15][^13]
-
-### 8.3. Service fails for another reason
-
-Check logs:
-
-```bash
-journalctl -u monoprice-audio -xe --no-pager
-```
-
-Look for:
-
-- Wrong `WorkingDirectory`.
-- Wrong `ExecStart` path (e.g., `/usr/bin/npm` vs `/usr/local/bin/npm`).
-- Serial permission errors: `EACCES` or `Permission denied` on `/dev/ttyUSB0`.
-
-If serial permission errors appear, ensure your service user is in `dialout` and the service has restarted after you changed group membership.[^12][^11]
-
-### 8.4. Web UI loads but state is “Offline”
-
-- Confirm the Pi can reach the amp:
-    - Check serial cable and RS‑232 port on the amp.
-    - Verify amp’s baud and settings match `9600 8‑N‑1` in the manual.[^3]
-- Temporarily run the app in the foreground:
-
-```bash
-cd /data/monoprice-audio-web
-SERIAL_PATH=/dev/ttyUSB0 PORT=3000 npm start
-```
-
-and watch for serial errors in the terminal.
-
-***
-
-## 9. Customization
-
-- Adjust default zone presets in `index.html` (names and icons).
-- Change polling interval (currently 30 seconds) if you want more/less frequent state updates.
-- Host behind an Nginx reverse proxy or TLS terminator if you want HTTPS; the app itself is plain HTTP on the configured port.
-
-***
-
-If you want to extend this further (e.g., add an “All Off” button or per‑source volume presets), you can reuse the same API endpoints and `localStorage` configuration model described above.[^1][^2]
-
-<div align="center">⁂</div>
-
-[^1]: https://developer.mozilla.org/en-US/docs/Web/API/Window/localStorage
-
-[^2]: https://developer.mozilla.org/en-US/docs/Learn_web_development/Extensions/Client-side_APIs/Client-side_storage
-
-[^3]: https://downloads.monoprice.com/files/manuals/10761_Manual_141028.pdf
-
-[^4]: https://mcurcio.com/2020/06/monoprice-31028-rs232/
-
-[^5]: https://nodered.org/docs/getting-started/raspberrypi
-
-[^6]: https://docs.npmjs.com/downloading-and-installing-node-js-and-npm/
-
-[^7]: https://forums.raspberrypi.com/viewtopic.php?t=141770
-
-[^8]: https://www.reddit.com/r/raspberry_pi/comments/w1igk6/i_installed_nodejs_but_npm_is_missing/
-
-[^9]: https://stackoverflow.com/questions/31472755/sudo-npm-command-not-found
-
-[^10]: https://serialport.io/docs/guide-installation/
-
-[^11]: https://roboticsbackend.com/raspberry-pi-hardware-permissions/
-
-[^12]: https://support.mosaicmfg.com/Guide/Enabling+USB-Serial+Port+Permissions+on+Linux/94
-
-[^13]: https://stackoverflow.com/questions/48176240/how-to-debug-a-failed-systemctl-service-code-exited-status-217-user
-
-[^14]: https://www.reddit.com/r/linuxquestions/comments/oaya49/systemd_service_not_starting_with_status217/
-
-[^15]: https://forum.manjaro.org/t/systemd-unit-not-starting/129377
-
-[^16]: https://homeassistant.jongriffith.com/2022/05/24/how-to-setup-the-monoprice-6-zone-amplifier-to-work-with-home-assistant/
-
-[^17]: https://github.com/zegelin/mwha2mqtt
-
-[^18]: https://blog.logrocket.com/localstorage-javascript-complete-guide/
-
-[^19]: https://blog.devgenius.io/local-storage-persistent-client-side-data-storage-c6558fab2f9d
-
-[^20]: https://stackoverflow.com/questions/9948284/how-persistent-is-localstorage
-
-[^21]: https://developer.mozilla.org/en-US/docs/Web/API/Window/storage_event
-
-[^22]: https://nabeelvalley.co.za/blog/2024/07-03/localstorage-based-sync/
-
-[^23]: https://www.openhab.org/addons/bindings/monopriceaudio/
+MIT — free to use, modify, and self-host.
