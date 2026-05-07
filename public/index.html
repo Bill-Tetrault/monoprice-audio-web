@@ -173,37 +173,37 @@ header {
 .vol-row {
   display: flex;
   align-items: center;
-  gap: .6rem;
+  gap: .5rem;
 }
 .vol-label { font-size: .75rem; color: var(--text-muted); flex-shrink: 0; width: 2.1rem; text-align: right; }
-input[type=range] {
-  flex: 1;
-  -webkit-appearance: none;
-  height: 4px;
-  border-radius: 2px;
+.vol-btn {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 8px;
   background: var(--surface2);
-  outline: none;
-  cursor: pointer;
+  border: 1px solid var(--border);
+  font-size: 1.1rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background var(--transition), box-shadow var(--transition);
+  user-select: none;
 }
-input[type=range]::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: var(--accent);
-  border: 2px solid var(--bg);
-  transition: box-shadow var(--transition);
-}
-input[type=range]::-webkit-slider-thumb:active {
-  box-shadow: 0 0 0 6px var(--accent-glow);
-}
-.vol-num {
-  font-size: .8rem;
+.vol-btn:hover { background: var(--border); }
+.vol-btn:active { box-shadow: 0 0 0 3px var(--accent-glow); }
+.vol-display {
+  flex: 1;
+  text-align: center;
+  font-size: 1rem;
   font-weight: 700;
   color: var(--accent);
-  min-width: 2rem;
-  text-align: right;
-  flex-shrink: 0;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: .3rem .4rem;
+  min-width: 2.5rem;
 }
 
 /* status chip */
@@ -469,9 +469,9 @@ function buildCard(zone) {
     </select>
     <div class="vol-row">
       <span class="vol-label">🔈</span>
-      <input type="range" id="vol-${zone}" min="0" max="38" value="${state.volume}"
-             aria-label="Volume">
-      <span class="vol-num" id="volnum-${zone}">${state.volume}</span>
+      <button class="vol-btn" id="vold-${zone}" aria-label="Volume down">−</button>
+      <div class="vol-display" id="volnum-${zone}">${state.volume}</div>
+      <button class="vol-btn" id="volu-${zone}" aria-label="Volume up">+</button>
     </div>
     <span class="status-chip${state.power ? ' on' : ''}" id="chip-${zone}">
       ${state.power ? '▶ ' + (cfg.sourceNames?.[state.source] || `Source ${state.source}`) : 'Off'}
@@ -508,12 +508,16 @@ function buildCard(zone) {
   });
 
   // ── Volume slider (debounced) ─────────────────────────────────────────────
-  card.querySelector(`#vol-${zone}`).addEventListener('input', e => {
-    const vol = parseInt(e.target.value, 10);
-    document.getElementById(`volnum-${zone}`).textContent = vol;
+  function changeVol(zone, delta) {
+    const cur = ampState[zone]?.volume ?? 0;
+    const next = Math.max(0, Math.min(38, cur + delta));
+    ampState[zone].volume = next;
+    document.getElementById(`volnum-${zone}`).textContent = next;
     clearTimeout(volTimers[zone]);
-    volTimers[zone] = setTimeout(() => sendVolume(zone, vol), VOL_DEBOUNCE_MS);
-  });
+    volTimers[zone] = setTimeout(() => sendVolume(zone, next), VOL_DEBOUNCE_MS);
+  }
+  card.querySelector(`#vold-${zone}`).addEventListener('click', () => changeVol(zone, -1));
+  card.querySelector(`#volu-${zone}`).addEventListener('click', () => changeVol(zone, +1));
 
   return card;
 }
