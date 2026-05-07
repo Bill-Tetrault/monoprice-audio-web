@@ -1,24 +1,35 @@
-# Raspberry Pi Setup Guide
+# SETUP.md – Monoprice 10761 Amp Web Controller
 
-## 1. Install Node.js (v20 LTS)
+## Prerequisites
+- Raspberry Pi running Raspberry Pi OS (64-bit recommended)
+- USB-to-serial adapter (USB-A to DB9 male, straight-through cable)
+- Monoprice 10761 powered on and connected
+
+---
+
+## 1. Install Node.js 20 LTS
 
 ```bash
+# Download and run the NodeSource setup script for Node 20 LTS
 curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
 sudo apt-get install -y nodejs
-node -v   # should print v20.x.x
+
+# Verify
+node -v    # should print v20.x.x
+npm  -v
 ```
 
-## 2. Clone / copy project files
+---
 
-Place all three files in one directory, e.g. `/opt/monoprice-amp/`:
+## 2. Clone / copy the project
 
+```bash
+sudo mkdir -p /opt/monoprice-amp
+sudo chown $USER:$USER /opt/monoprice-amp
+# Copy package.json, server.js, and the public/ folder into /opt/monoprice-amp/
 ```
-/opt/monoprice-amp/
-  package.json
-  server.js
-  public/
-    index.html
-```
+
+---
 
 ## 3. Install dependencies
 
@@ -27,32 +38,52 @@ cd /opt/monoprice-amp
 npm install
 ```
 
-## 4. Find your serial device
+---
 
-Plug in the USB-to-RS232 adapter, then:
+## 4. Grant serial port access
 
-```bash
-ls /dev/ttyUSB*   # FTDI / generic: /dev/ttyUSB0
-ls /dev/ttyACM*   # Some adapters enumerate here
-```
-
-## 5. Add your user to the `dialout` group
+The user running the server must be in the `dialout` group:
 
 ```bash
 sudo usermod -aG dialout $USER
-# Log out and back in for this to take effect
+# You must log out and log back in (or reboot) for this to take effect
 ```
 
-## 6. Test manually
+Verify your adapter path:
 
 ```bash
-SERIAL_PATH=/dev/ttyUSB0 PORT=3000 npm start
-# Then open http://<pi-ip>:3000 in your browser
+ls -l /dev/ttyUSB*   # typical output: /dev/ttyUSB0
+# OR
+ls -l /dev/ttyACM*   # some adapters enumerate here instead
 ```
 
-## 7. Create a systemd service for auto-start
+---
 
-Create `/etc/systemd/system/monoprice-amp.service`:
+## 5. Test run
+
+```bash
+cd /opt/monoprice-amp
+SERIAL_PATH=/dev/ttyUSB0 PORT=3000 node server.js
+```
+
+Open a browser on any device on your LAN:
+```
+http://<raspberry-pi-ip>:3000
+```
+
+Confirm the green "serial open" state (no offline banner appears at the top).
+
+---
+
+## 6. Install as a systemd service
+
+Create the unit file:
+
+```bash
+sudo nano /etc/systemd/system/monoprice-amp.service
+```
+
+Paste:
 
 ```ini
 [Unit]
@@ -66,31 +97,77 @@ WorkingDirectory=/opt/monoprice-amp
 Environment=NODE_ENV=production
 Environment=PORT=3000
 Environment=SERIAL_PATH=/dev/ttyUSB0
+Environment=CONFIG_PATH=/opt/monoprice-amp/config.json
 ExecStart=/usr/bin/node /opt/monoprice-amp/server.js
 Restart=on-failure
 RestartSec=5
-StandardOutput=journal
-StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
 ```
 
+> **Note:** Change `User=pi` if your Raspberry Pi OS user is different (e.g., `User=bill`).
+> Confirm the node path with `which node` and update `ExecStart` if needed.
+
 Enable and start:
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable monoprice-amp
-sudo systemctl start  monoprice-amp
-sudo systemctl status monoprice-amp   # verify it's running
+sudo systemctl enable --now monoprice-amp
+
+# Check status
+sudo systemctl status monoprice-amp
+
+# Watch live logs
+sudo journalctl -u monoprice-amp -f
 ```
 
-View logs:
+---
+
+## 7. Find your Pi's IP address
 
 ```bash
-journalctl -u monoprice-amp -f
+hostname -I
 ```
 
-## 8. Access the UI
+Then from any phone, tablet, or computer on the same network:
+```
+http://<pi-ip>:3000
+```
 
-Open `http://<raspberry-pi-ip>:3000` on any phone or browser on your network.
+---
+
+## Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| "Serial port not open" banner | Check `SERIAL_PATH`; confirm dialout group membership (re-login required) |
+| "Command Error." in logs | Verify straight-through DB9 cable (not null-modem); confirm zone 1–6 only |
+| Timeout on zone query | Check baud rate is 9600; confirm amp is powered on; reseat USB adapter |
+| Can't reach :3000 from LAN | Check Pi firewall: `sudo ufw allow 3000` |
+| `config.json` not saving | Check write permissions: `ls -la /opt/monoprice-amp/` |
+
+---
+
+## Environment variables reference
+
+| Variable | Default | Description |
+|---|---|---|
+| `PORT` | `3000` | HTTP server port |
+| `SERIAL_PATH` | `/dev/ttyUSB0` | Serial device path |
+| `CONFIG_PATH` | `./config.json` | Path to UI config file |
+
+---
+
+## RS-232 cable pinout reminder
+
+This amp uses a **straight-through** DB9 cable (not a null-modem crossover):
+
+| Signal | DB9 Pin | Wire color (typical) |
+|---|---|---|
+| RX | 2 | Yellow |
+| TX | 3 | Orange |
+| GND | 5 | Black |
+
+Both ends connect the **same pin numbers** together.  
+The amp has a **female** DB9 socket; your USB adapter cable needs a **male** DB9 plug.

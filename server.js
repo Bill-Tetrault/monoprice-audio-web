@@ -1,255 +1,390 @@
 'use strict';
 
 /**
- * server.js – Monoprice 10761 RS-232 Web Controller
+ * server.js – Monoprice 10761 Six-Zone Amplifier Web Controller
  *
- * CONFIRMED PROTOCOL (9600 8-N-1):
- *   Terminator : \r\n
- *   Query cmds : expect a ">" response line  e.g. ?11\r\n → >1100000000111111100401
- *   Set cmds   : NO response – amp silently executes  e.g. <14PR01\r\n → (nothing)
- *
- *   Query  : ?1<Z>\r\n          Z = zone 1-6
- *   Set pwr: <1<Z>PR<00|01>\r\n
- *   Set src: <1<Z>CH<01-06>\r\n
- *   Set vol: <1<Z>VO<00-38>\r\n
+ * RS-232 protocol notes (validated against real hardware):
+ *   - Baud: 9600, 8-N-1, straight-through DB9 cable (NOT null-modem)
+ *   - Every command terminated with CR+LF (0x0D 0x0A) – neither alone works
+ *   - Zone prefix: controller-id (1) + single-digit zone (1-6) → "11".."16"
+ *     NOTE: Do NOT use the two-digit zone format (11-16) from some manuals;
+ *           it causes "Command Error." on this unit.
+ *   - Query response: echo bytes + '#' + '>' + 22 ASCII digits
+ *   - Set commands (power/source/volume) produce NO response – drain only
  */
 
-const express = require('express');
-const path    = require('path');
+const express    = require('express');
+const path       = require('path');
+const fs         = require('fs');
 const { SerialPort } = require('serialport');
 
-const PORT          = parseInt(process.env.PORT || '3000', 10);
-const SERIAL_PATH   = process.env.SERIAL_PATH   || '/dev/ttyUSB0';
-const BAUD_RATE     = 9600;
-const CONTROLLER_ID = 1;
-const REPLY_TIMEOUT = 4000; // ms – for query commands only
+// ─── Environment / defaults ────────────────────────────────────────────────
+const PORT        = parseInt(process.env.PORT        || '3000', 10);
+const SERIAL_PATH = process.env.SERIAL_PATH          || '/dev/ttyUSB0';
+const CONFIG_PATH = process.env.CONFIG_PATH          || path.join(__dirname, 'config.json');
 
-// ── Serial port (raw Buffer mode) ─────────────────────────────────────────────
+// ─── Config defaults ───────────────────────────────────────────────────────
+const CONFIG_DEFAULTS = {
+  theme: 'dark',
+  sourceNames: {
+    '1': 'Source 1', '2': 'Source 2', '3': 'Source 3',
+    '4': 'Source 4', '5': 'Source 5', '6': 'Source 6'
+  },
+  zones: {
+    '1': { name: 'Living Room', icon: '🛋️' },
+    '2': { name: 'Kitchen',     icon: '🍳' },
+    '3': { name: 'Master Bed',  icon: '🛏️' },
+    '4': { name: 'Office',      icon: '💻' },
+    '5': { name: 'Patio',       icon: '🌿' },
+    '6': { name: 'Garage',      icon: '🏠' }
+  }
+};
+
+// ─── Config I/O ────────────────────────────────────────────────────────────
+let cfg = {};
+
+function loadConfig() {
+  if (!fs.existsSync(CONFIG_PATH)) {
+    cfg = JSON.parse(JSON.stringify(CONFIG_DEFAULTS));
+    writeConfig();
+    console.log(`[config] Created default config at ${CONFIG_PATH}`);
+  } else {
+    try {
+      cfg = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+      console.log(`[config] Loaded config from ${CONFIG_PATH}`);
+    } catch (e) {
+      console.error('[config] Parse error – using defaults:', e.message);
+      cfg = JSON.parse(JSON.stringify(CONFIG_DEFAULTS));
+    }
+  }
+}
+
+function writeConfig() {
+  // Atomic write: write to .tmp then rename to avoid partial reads
+  const tmp = CONFIG_PATH + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(cfg, null, 2), 'utf8');
+  fs.renameSync(tmp, CONFIG_PATH);
+}
+
+/** Deep-merge src into dst (mutates dst). Only merges plain objects. */
+function deepMerge(dst, src) {
+  for (const key of Object.keys(src)) {
+    if (
+      src[key] !== null &&
+      typeof src[key] === 'object' &&
+      !Array.isArray(src[key]) &&
+      dst[key] !== null &&
+      typeof dst[key] === 'object' &&
+      !Array.isArray(dst[key])
+    ) {
+      deepMerge(dst[key], src[key]);
+    } else {
+      dst[key] = src[key];
+    }
+  }
+  return dst;
+}
+
+// ─── Serial port ───────────────────────────────────────────────────────────
 const serial = new SerialPort({
-  path:     SERIAL_PATH,
-  baudRate: BAUD_RATE,
+  path: SERIAL_PATH,
+  baudRate: 9600,        // Confirmed baud rate
   dataBits: 8,
-  parity:   'none',
   stopBits: 1,
-  autoOpen: false,
+  parity: 'none',
+  autoOpen: false
 });
 
-// One transaction at a time
+serial.open(err => {
+  if (err) {
+    // Allow server to start even without serial (useful for dev/testing)
+    console.error(`[serial] Failed to open ${SERIAL_PATH}:`, err.message);
+    console.warn('[serial] Running in offline mode – serial commands will fail');
+  } else {
+    console.log(`[serial] Opened ${SERIAL_PATH} @ 9600 8-N-1`);
+  }
+});
+
+// ─── Serial promise queue ─────────────────────────────────────────────────
+// Serialise all transactions so commands never overlap on the wire.
 let serialQueue = Promise.resolve();
 
-function zoneId(zone) { return `${zone}`; }
-
-// ── Write-only command (set power/source/volume – no response expected) ────────
-/**
- * writeCommand(cmd) → Promise<void>
- * Writes cmd + \r\n and resolves after drain. Does NOT wait for any response.
- */
-function writeCommand(cmd) {
-  serialQueue = serialQueue.then(() => _doWrite(cmd));
+function enqueue(fn) {
+  serialQueue = serialQueue.then(fn).catch(err => {
+    console.error('[serial] Queue error:', err.message);
+    throw err;
+  });
   return serialQueue;
 }
 
-function _doWrite(cmd) {
-  return new Promise((resolve, reject) => {
-    serial.write(cmd + '\r\n', 'ascii', (err) => {
+// CR+LF terminator required by the amp – neither CR alone nor LF alone works
+const TERMINATOR = Buffer.from([0x0D, 0x0A]);
+
+/**
+ * writeCommand(cmd)
+ * Send a set command (power/source/volume).  The amp sends NO response for
+ * these – resolve as soon as drain() confirms the bytes are on the wire.
+ */
+function writeCommand(cmd) {
+  return enqueue(() => new Promise((resolve, reject) => {
+    if (!serial.isOpen) return reject(new Error('Serial port not open'));
+    const buf = Buffer.concat([Buffer.from(cmd, 'ascii'), TERMINATOR]);
+    console.log(`[serial] write: ${JSON.stringify(cmd)}`);
+    serial.write(buf, err => {
       if (err) return reject(err);
-      serial.drain((err2) => {
-        if (err2) return reject(err2);
+      // drain() waits until all bytes have been transmitted
+      serial.drain(drainErr => {
+        if (drainErr) return reject(drainErr);
         resolve();
       });
     });
-  });
+  }));
 }
 
-// ── Query command (expects ">" response) ──────────────────────────────────────
 /**
- * queryCommand(cmd) → Promise<string>
- * Writes cmd + \r\n and waits for a response line starting with '>'.
- * Accumulates raw bytes; resolves 200ms after buffer stops growing once '>' is seen.
+ * queryCommand(cmd)
+ * Send a query command and collect the amp's response.
+ *
+ * Response format: <echo bytes> + '#' + '>XXXXXXXXXXXXXXXXXXXXXX' (22 digits)
+ * The response may arrive in multiple TCP/serial chunks, so we accumulate into
+ * a string buffer and wait for the '>' marker, then apply a 200 ms settle
+ * timer to ensure the full 22-digit payload has arrived before resolving.
  */
 function queryCommand(cmd) {
-  serialQueue = serialQueue.then(() => _doQuery(cmd));
-  return serialQueue;
-}
+  return enqueue(() => new Promise((resolve, reject) => {
+    if (!serial.isOpen) return reject(new Error('Serial port not open'));
 
-function _doQuery(cmd) {
-  return new Promise((resolve, reject) => {
-    let buf         = '';
+    let buf = '';
     let settleTimer = null;
-    let timeoutTimer;
+    const SETTLE_MS = 200;  // wait 200 ms after '>' appears for full payload
+    const TIMEOUT_MS = 3000;
 
-    function tryResolve() {
-      const start = buf.indexOf('>');
-      if (start === -1) return false;
-      const line = buf.slice(start).replace(/[\r\n]+$/, '').trim();
-      if (line.length < 3) return false;
-      cleanup();
-      resolve(line);
-      return true;
-    }
-
-    function onData(chunk) {
+    const onData = chunk => {
       buf += chunk.toString('ascii');
-      clearTimeout(settleTimer);
-      if (buf.indexOf('>') !== -1) {
+      console.log(`[serial] recv chunk: ${JSON.stringify(chunk.toString('ascii'))}`);
+
+      const idx = buf.indexOf('>');
+      if (idx !== -1) {
+        // '>' found – reset settle timer on every new byte to handle chunking
+        if (settleTimer) clearTimeout(settleTimer);
         settleTimer = setTimeout(() => {
-          if (!tryResolve()) {
-            cleanup();
-            reject(new Error(`Incomplete response for "${cmd}": ${JSON.stringify(buf)}`));
-          }
-        }, 200);
+          serial.removeListener('data', onData);
+          clearTimeout(timeout);
+          const response = buf.substring(idx); // ">XXXXXX..."
+          console.log(`[serial] response: ${JSON.stringify(response)}`);
+          resolve(response);
+        }, SETTLE_MS);
       }
-    }
+    };
 
-    function onError(err) { cleanup(); reject(err); }
-
-    function cleanup() {
-      clearTimeout(settleTimer);
-      clearTimeout(timeoutTimer);
+    const timeout = setTimeout(() => {
       serial.removeListener('data', onData);
-      serial.removeListener('error', onError);
-    }
+      reject(new Error(`Query "${cmd}" timed out after ${TIMEOUT_MS} ms`));
+    }, TIMEOUT_MS);
 
+    // Attach listener directly to the SerialPort instance (raw Buffer mode –
+    // no ReadlineParser or any other parser pipe, per protocol spec)
     serial.on('data', onData);
-    serial.on('error', onError);
 
-    timeoutTimer = setTimeout(() => {
-      cleanup();
-      const hint = buf
-        ? ` (received: ${JSON.stringify(buf)})`
-        : ' (nothing received – check cable/path/permissions)';
-      reject(new Error(`Serial timeout for "${cmd}"${hint}`));
-    }, REPLY_TIMEOUT);
-
-    serial.write(cmd + '\r\n', 'ascii', (writeErr) => {
-      if (writeErr) { cleanup(); reject(writeErr); return; }
-      serial.drain((drainErr) => {
-        if (drainErr) { cleanup(); reject(drainErr); }
-      });
+    const txBuf = Buffer.concat([Buffer.from(cmd, 'ascii'), TERMINATOR]);
+    console.log(`[serial] query: ${JSON.stringify(cmd)}`);
+    serial.write(txBuf, err => {
+      if (err) {
+        clearTimeout(timeout);
+        serial.removeListener('data', onData);
+        reject(err);
+      }
     });
-  });
+  }));
 }
 
-// ── Response parser ───────────────────────────────────────────────────────────
 /**
  * parseZoneStatus(raw, zone)
- * raw example: ">1100000000111111100401"
- * 2-char fields after '>':
- *   0=ZZ  1=PA  2=PR(power 0/1)  3=MU  4=DT  5=VO(0-38)
- *   6=TR  7=BS  8=BL  9=CH(source 1-6)  10=LS
+ * Parse the '>XXXXXXXXXXXXXXXXXXXXXX' response (22 ASCII digits).
+ *
+ * Field layout (0-indexed pairs after '>'):
+ *   0: ZZ  zone echo
+ *   1: PA  public address flag
+ *   2: PR  power  (00=off, 01=on)
+ *   3: MU  mute   (00/01)
+ *   4: DT  do-not-disturb
+ *   5: VO  volume (00-38)
+ *   6: TR  treble
+ *   7: BS  bass
+ *   8: BL  balance
+ *   9: CH  source channel (01-06)
+ *  10: LS  keypad lock flag
  */
 function parseZoneStatus(raw, zone) {
-  const data = raw.replace(/^>/, '').trim();
-  const fields = [];
-  for (let i = 0; i + 1 < data.length; i += 2) {
-    fields.push(parseInt(data.slice(i, i + 2), 10));
+  // Extract the segment starting at '>'
+  const start = raw.indexOf('>');
+  if (start === -1) throw new Error(`No '>' in response: ${JSON.stringify(raw)}`);
+
+  const digits = raw.substring(start + 1).replace(/\D/g, ''); // strip non-digits
+
+  if (digits.length < 22) {
+    throw new Error(`Response too short (${digits.length} digits): ${JSON.stringify(raw)}`);
   }
-  if (fields.length < 10) {
-    throw new Error(`Short response: "${raw}" (${fields.length} fields)`);
-  }
+
+  const field = (i) => parseInt(digits.substring(i * 2, i * 2 + 2), 10);
+
   return {
-    zone,
-    power:  fields[2] === 1,
-    volume: fields[5],
-    source: fields[9],
+    zone:   zone,
+    power:  field(2) === 1,     // PR field
+    source: field(9),           // CH field (1-6)
+    volume: field(5)            // VO field (0-38)
   };
 }
 
-// ── Protocol functions ────────────────────────────────────────────────────────
+// ─── High-level zone helpers ───────────────────────────────────────────────
+// Zone prefix format: '1' (controller ID) + '<zone digit>' (1-6)
+// → zone 1 = '11', zone 2 = '12', ..., zone 6 = '16'
+// Do NOT use the two-digit zone format from older manuals (causes Command Error)
+
+function zonePrefix(zone) {
+  return `1${zone}`;
+}
+
 async function getZoneState(zone) {
-  const reply = await queryCommand(`?${CONTROLLER_ID}${zoneId(zone)}`);
-  return parseZoneStatus(reply, zone);
+  // Query format: ?1<Z>\r\n  e.g. ?11\r\n for zone 1
+  const cmd = `?1${zone}`;
+  const raw = await queryCommand(cmd);
+  return parseZoneStatus(raw, zone);
 }
 
-// Set commands use writeCommand – no response expected
 async function setZonePower(zone, on) {
-  await writeCommand(`<${CONTROLLER_ID}${zoneId(zone)}PR${on ? '01' : '00'}`);
+  // Power on: <1<Z>PR01\r\n  Power off: <1<Z>PR00\r\n
+  const val = on ? '01' : '00';
+  await writeCommand(`<${zonePrefix(zone)}PR${val}`);
+  return { ok: true, zone, power: on };
 }
 
-async function setZoneSource(zone, source) {
-  await writeCommand(`<${CONTROLLER_ID}${zoneId(zone)}CH${String(source).padStart(2, '0')}`);
+async function setZoneSource(zone, src) {
+  // Source format: <1<Z>CH0N\r\n  e.g. <11CH02\r\n  (source 2, zone 1)
+  const val = String(src).padStart(2, '0');
+  await writeCommand(`<${zonePrefix(zone)}CH${val}`);
+  return { ok: true, zone, source: src };
 }
 
-async function setZoneVolume(zone, volume) {
-  const v = Math.max(0, Math.min(38, volume));
-  await writeCommand(`<${CONTROLLER_ID}${zoneId(zone)}VO${String(v).padStart(2, '0')}`);
+async function setZoneVolume(zone, vol) {
+  // Volume format: <1<Z>VO##\r\n  e.g. <11VO15\r\n  (vol 15, zone 1)
+  const clamped = Math.max(0, Math.min(38, vol)); // clamp 0-38 server-side
+  const val = String(clamped).padStart(2, '0');
+  await writeCommand(`<${zonePrefix(zone)}VO${val}`);
+  return { ok: true, zone, volume: clamped };
 }
 
-// ── Validation ────────────────────────────────────────────────────────────────
-function validZone(z)   { return Number.isInteger(z) && z >= 1 && z <= 6; }
-function validSource(s) { return Number.isInteger(s) && s >= 1 && s <= 6; }
-
-// ── Express ───────────────────────────────────────────────────────────────────
+// ─── Express app ───────────────────────────────────────────────────────────
 const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, serial: SERIAL_PATH, connected: serial.isOpen });
+// Allowed top-level config keys (reject unknown keys to prevent config pollution)
+const VALID_CONFIG_KEYS = new Set(['theme', 'sourceNames', 'zones']);
+
+// ── Middleware: validate zone param ─────────────────────────────────────────
+function validateZone(req, res, next) {
+  const zone = parseInt(req.params.zone, 10);
+  if (!zone || zone < 1 || zone > 6) {
+    return res.status(400).json({ error: 'zone must be 1-6' });
+  }
+  req.zone = zone;
+  next();
+}
+
+// ── GET /api/health ──────────────────────────────────────────────────────────
+app.get('/api/health', (req, res) => {
+  res.json({ ok: true, serialOpen: serial.isOpen });
 });
 
+// ── GET /api/state?zone=N ────────────────────────────────────────────────────
 app.get('/api/state', async (req, res) => {
   const zone = parseInt(req.query.zone, 10);
-  if (!validZone(zone)) return res.status(400).json({ error: 'zone must be 1-6' });
+  if (!zone || zone < 1 || zone > 6) {
+    return res.status(400).json({ error: 'zone must be 1-6' });
+  }
   try {
-    res.json(await getZoneState(zone));
-  } catch (err) {
-    console.error('GET /api/state:', err.message);
-    res.status(500).json({ error: err.message });
+    const state = await getZoneState(zone);
+    res.json(state);
+  } catch (e) {
+    console.error(`[api] getZoneState(${zone}) error:`, e.message);
+    res.status(502).json({ error: e.message });
   }
 });
 
-app.post('/api/zone/:zone/power', async (req, res) => {
-  const zone = parseInt(req.params.zone, 10);
+// ── POST /api/zone/:zone/power ───────────────────────────────────────────────
+app.post('/api/zone/:zone/power', validateZone, async (req, res) => {
   const { on } = req.body;
-  if (!validZone(zone))        return res.status(400).json({ error: 'zone must be 1-6' });
-  if (typeof on !== 'boolean') return res.status(400).json({ error: '"on" must be boolean' });
+  if (typeof on !== 'boolean') {
+    return res.status(400).json({ error: '"on" must be a boolean' });
+  }
   try {
-    await setZonePower(zone, on);
-    res.json({ ok: true, zone, power: on });
-  } catch (err) {
-    console.error('POST /power:', err.message);
-    res.status(500).json({ error: err.message });
+    const result = await setZonePower(req.zone, on);
+    res.json(result);
+  } catch (e) {
+    console.error(`[api] setZonePower error:`, e.message);
+    res.status(502).json({ error: e.message });
   }
 });
 
-app.post('/api/zone/:zone/source', async (req, res) => {
-  const zone   = parseInt(req.params.zone, 10);
+// ── POST /api/zone/:zone/source ──────────────────────────────────────────────
+app.post('/api/zone/:zone/source', validateZone, async (req, res) => {
   const source = parseInt(req.body.source, 10);
-  if (!validZone(zone))     return res.status(400).json({ error: 'zone must be 1-6' });
-  if (!validSource(source)) return res.status(400).json({ error: 'source must be 1-6' });
+  if (!source || source < 1 || source > 6) {
+    return res.status(400).json({ error: 'source must be 1-6' });
+  }
   try {
-    await setZoneSource(zone, source);
-    res.json({ ok: true, zone, source });
-  } catch (err) {
-    console.error('POST /source:', err.message);
-    res.status(500).json({ error: err.message });
+    const result = await setZoneSource(req.zone, source);
+    res.json(result);
+  } catch (e) {
+    console.error(`[api] setZoneSource error:`, e.message);
+    res.status(502).json({ error: e.message });
   }
 });
 
-app.post('/api/zone/:zone/volume', async (req, res) => {
-  const zone   = parseInt(req.params.zone, 10);
-  const volume = parseInt(req.body.volume, 10);
-  if (!validZone(zone)) return res.status(400).json({ error: 'zone must be 1-6' });
-  if (isNaN(volume))    return res.status(400).json({ error: '"volume" must be a number' });
-  const clamped = Math.max(0, Math.min(38, volume));
+// ── POST /api/zone/:zone/volume ──────────────────────────────────────────────
+app.post('/api/zone/:zone/volume', validateZone, async (req, res) => {
+  const vol = parseInt(req.body.volume, 10);
+  if (isNaN(vol)) {
+    return res.status(400).json({ error: '"volume" must be a number 0-38' });
+  }
   try {
-    await setZoneVolume(zone, clamped);
-    res.json({ ok: true, zone, volume: clamped });
-  } catch (err) {
-    console.error('POST /volume:', err.message);
-    res.status(500).json({ error: err.message });
+    const result = await setZoneVolume(req.zone, vol); // clamping happens inside
+    res.json(result);
+  } catch (e) {
+    console.error(`[api] setZoneVolume error:`, e.message);
+    res.status(502).json({ error: e.message });
   }
 });
 
-// ── Open serial then start HTTP ───────────────────────────────────────────────
-serial.open((err) => {
-  if (err) {
-    console.error(`Cannot open ${SERIAL_PATH}:`, err.message);
-    process.exit(1);
-  }
-  console.log(`Serial open: ${SERIAL_PATH} @ ${BAUD_RATE} baud`);
-  app.listen(PORT, () => console.log(`Monoprice controller → http://0.0.0.0:${PORT}`));
+// ── GET /api/config ──────────────────────────────────────────────────────────
+app.get('/api/config', (req, res) => {
+  res.json(cfg);
 });
 
-serial.on('error', (err) => console.error('Serial error:', err.message));
+// ── PATCH /api/config ────────────────────────────────────────────────────────
+app.patch('/api/config', (req, res) => {
+  const body = req.body;
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+    return res.status(400).json({ error: 'Request body must be a JSON object' });
+  }
+
+  // Reject unknown top-level keys
+  for (const key of Object.keys(body)) {
+    if (!VALID_CONFIG_KEYS.has(key)) {
+      return res.status(400).json({ error: `Unknown config key: "${key}"` });
+    }
+  }
+
+  deepMerge(cfg, body);
+  writeConfig();
+  res.json(cfg);
+});
+
+// ─── Start server ──────────────────────────────────────────────────────────
+loadConfig();
+app.listen(PORT, () => {
+  console.log(`[server] Listening on http://0.0.0.0:${PORT}`);
+  console.log(`[server] Serial device: ${SERIAL_PATH}`);
+  console.log(`[server] Config file:   ${CONFIG_PATH}`);
+});
