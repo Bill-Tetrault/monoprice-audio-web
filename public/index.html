@@ -4,38 +4,33 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>🎵 Home Audio</title>
-<link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
 /* ── CSS custom properties (theming) ───────────────────────────────────── */
 :root {
-  --bg:          #0a0a0f;
-  --surface:     rgba(20,25,40,0.6);
-  --surface-solid: #141928;
-  --surface2:    rgba(40,45,65,0.6);
-  --border:      rgba(124,58,237,0.2);
-  --border-glow: rgba(124,58,237,0.5);
-  --accent:      #7c3aed;
-  --accent-glow: rgba(124,58,237,0.4);
-  --on-green:    #10b981;
-  --on-glow:     rgba(16,185,129,0.3);
-  --text:        #f8fafc;
-  --text-muted:  #94a3b8;
-  --radius:      24px;
-  --shadow:      0 8px 32px rgba(0,0,0,.5);
-  --transition:  .3s cubic-bezier(0.4, 0, 0.2, 1);
-  --font-mono:   'Fira Code', monospace;
+  --bg:          #0f1117;
+  --surface:     #1a1d27;
+  --surface2:    #22263a;
+  --border:      #2e3250;
+  --accent:      #6c63ff;
+  --accent-glow: #6c63ff44;
+  --on-green:    #22c55e;
+  --on-glow:     #22c55e33;
+  --text:        #e2e8f0;
+  --text-muted:  #64748b;
+  --radius:      14px;
+  --shadow:      0 4px 24px rgba(0,0,0,.4);
+  --transition:  .2s ease;
 }
 [data-theme="light"] {
-  --bg:          #f1f5f9;
-  --surface:     rgba(255,255,255,0.7);
-  --surface-solid: #ffffff;
-  --surface2:    rgba(226,232,240,0.7);
-  --border:      rgba(124,58,237,0.2);
-  --border-glow: rgba(124,58,237,0.5);
-  --accent:      #6d28d9;
-  --text:        #0f172a;
-  --text-muted:  #64748b;
-  --shadow:      0 8px 32px rgba(0,0,0,.08);
+  --bg:          #f0f4f8;
+  --surface:     #ffffff;
+  --surface2:    #e8edf3;
+  --border:      #cbd5e1;
+  --accent:      #4f46e5;
+  --accent-glow: #4f46e522;
+  --text:        #1e293b;
+  --text-muted:  #94a3b8;
+  --shadow:      0 4px 24px rgba(0,0,0,.12);
 }
 
 /* ── Reset / base ──────────────────────────────────────────────────────── */
@@ -56,141 +51,96 @@ header {
   justify-content: space-between;
   padding: 1rem 1.5rem;
   background: var(--surface);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
   border-bottom: 1px solid var(--border);
   position: sticky;
   top: 0;
   z-index: 100;
   box-shadow: var(--shadow);
 }
-.header-title { font-size: 1.4rem; font-weight: 700; display: flex; align-items: center; gap: .5rem; }
-.header-actions { display: flex; gap: .75rem; }
+.header-title { font-size: 1.2rem; font-weight: 700; display: flex; align-items: center; gap: .5rem; }
+.header-actions { display: flex; gap: .5rem; }
 .btn-icon {
-  padding: .6rem .9rem;
-  border-radius: 12px;
+  padding: .45rem .75rem;
+  border-radius: 8px;
   background: var(--surface2);
   border: 1px solid var(--border);
-  font-size: 1rem;
-  transition: all var(--transition);
-  backdrop-filter: blur(10px);
+  font-size: .9rem;
+  transition: background var(--transition), box-shadow var(--transition);
 }
-.btn-icon:hover { 
-  background: var(--accent); 
-  border-color: var(--accent);
-  box-shadow: 0 0 15px var(--accent-glow);
-}
+.btn-icon:hover { background: var(--border); }
 
-/* ── Zone grid (Bento Box) ────────────────────────────────────────────────*/
+/* ── Zone grid ─────────────────────────────────────────────────────────── */
 .grid {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 1.25rem;
-  padding: 1.5rem;
+  gap: 1rem;
+  padding: 1.25rem 1rem;
   max-width: 1200px;
   margin: 0 auto;
 }
-@media (min-width: 768px) { 
-  .grid { 
-    grid-template-columns: repeat(2, 1fr); 
-    grid-auto-flow: dense;
-  } 
-  .card:nth-child(1) { grid-column: span 2; }
-  .card:nth-child(4) { grid-row: span 2; }
-}
-@media (min-width: 1024px) { 
-  .grid { 
-    grid-template-columns: repeat(3, 1fr); 
-  }
-  .card:nth-child(1) { grid-column: span 2; grid-row: span 2; }
-  .card:nth-child(2) { grid-column: span 1; grid-row: span 1; }
-  .card:nth-child(3) { grid-column: span 1; grid-row: span 1; }
-  .card:nth-child(4) { grid-column: span 2; grid-row: span 1; }
-  .card:nth-child(5) { grid-column: span 1; grid-row: span 1; }
-}
+@media (min-width: 600px)  { .grid { grid-template-columns: repeat(2, 1fr); } }
+@media (min-width: 900px)  { .grid { grid-template-columns: repeat(3, 1fr); } }
 
-/* ── Zone card (Glassmorphism) ─────────────────────────────────────────── */
+/* ── Zone card ─────────────────────────────────────────────────────────── */
 .card {
   background: var(--surface);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 1.5rem;
+  padding: 1.1rem 1.2rem 1.2rem;
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
+  gap: .75rem;
   box-shadow: var(--shadow);
-  transition: all var(--transition);
-  position: relative;
-  overflow: hidden;
-}
-.card::before {
-  content: '';
-  position: absolute;
-  top: 0; left: 0; right: 0; bottom: 0;
-  border-radius: inherit;
-  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.05);
-  pointer-events: none;
-}
-.card:hover {
-  box-shadow: 0 12px 40px rgba(0,0,0,.6), 0 0 20px var(--border-glow);
-  border-color: var(--accent);
+  transition: box-shadow var(--transition);
 }
 .card.powered {
   border-color: var(--on-green);
-  box-shadow: 0 0 20px var(--on-glow), var(--shadow);
-}
-.card.powered::before {
-  box-shadow: inset 0 0 0 1px rgba(16,185,129,0.2);
+  box-shadow: 0 0 0 2px var(--on-glow), var(--shadow);
 }
 
 /* card header row */
 .card-header {
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: .65rem;
 }
 .zone-icon-btn {
-  font-size: 2rem;
+  font-size: 1.65rem;
+  line-height: 1;
   background: var(--surface2);
   border: 1px solid var(--border);
-  border-radius: 16px;
-  width: 3.5rem;
-  height: 3.5rem;
+  border-radius: 10px;
+  width: 2.6rem;
+  height: 2.6rem;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  transition: all var(--transition);
+  transition: background var(--transition);
 }
-.zone-icon-btn:hover { 
-  background: var(--accent);
-  box-shadow: 0 0 15px var(--accent-glow);
-}
+.zone-icon-btn:hover { background: var(--border); }
 .zone-name-input {
   flex: 1;
   background: transparent;
   border: none;
-  font-family: var(--font-mono);
-  font-size: 1.2rem;
-  font-weight: 700;
+  font-size: 1rem;
+  font-weight: 600;
   color: var(--text);
   outline: none;
   border-bottom: 2px solid transparent;
   transition: border-color var(--transition);
-  padding-bottom: 4px;
+  padding-bottom: 2px;
 }
 .zone-name-input:focus { border-bottom-color: var(--accent); }
 
 /* power button */
 .power-btn {
-  width: 3.5rem;
-  height: 3.5rem;
+  width: 2.2rem;
+  height: 2.2rem;
   border-radius: 50%;
   background: var(--surface2);
   border: 1px solid var(--border);
-  font-size: 2.5rem;
+  font-size: 1rem;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -200,208 +150,164 @@ header {
 .power-btn.on {
   background: var(--on-green);
   border-color: var(--on-green);
-  color: var(--bg);
-  box-shadow: 0 0 20px var(--on-glow);
+  color: #000;
+  box-shadow: 0 0 10px var(--on-glow);
 }
 
 /* source select */
 .zone-source {
   width: 100%;
-  padding: .75rem 1rem;
-  border-radius: 12px;
+  padding: .45rem .65rem;
+  border-radius: 8px;
   background: var(--surface2);
   border: 1px solid var(--border);
   color: var(--text);
-  font-family: var(--font-mono);
-  font-size: 1rem;
+  font-size: .9rem;
   outline: none;
   cursor: pointer;
-  transition: all var(--transition);
-  appearance: none;
-  background-image: url('data:image/svg+xml;utf8,<svg fill="%237c3aed" height="24" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg"><path d="M7 10l5 5 5-5z"/><path d="M0 0h24v24H0z" fill="none"/></svg>');
-  background-repeat: no-repeat;
-  background-position: right 10px top 50%;
+  transition: border-color var(--transition);
 }
-.zone-source:focus, .zone-source:hover { 
-  border-color: var(--accent); 
-  box-shadow: 0 0 10px var(--accent-glow);
-}
-.zone-source option {
-  background: var(--surface-solid);
-  color: var(--text);
-}
+.zone-source:focus { border-color: var(--accent); }
 
 /* volume row */
 .vol-row {
   display: flex;
   align-items: center;
-  gap: .75rem;
-  margin-top: auto;
+  gap: .5rem;
 }
-.vol-label { 
-  font-family: var(--font-mono);
-  font-size: .85rem; 
-  color: var(--text-muted); 
-  flex-shrink: 0; 
-}
+.vol-label { font-size: .75rem; color: var(--text-muted); flex-shrink: 0; width: 2.1rem; text-align: right; }
 .vol-btn {
-  width: 3rem;
-  height: 3rem;
-  border-radius: 12px;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 8px;
   background: var(--surface2);
   border: 1px solid var(--border);
-  font-size: 1.5rem;
+  font-size: 1.1rem;
   font-weight: 700;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  transition: all var(--transition);
+  transition: background var(--transition), box-shadow var(--transition);
   user-select: none;
 }
-.vol-btn:hover { 
-  background: var(--accent);
-  border-color: var(--accent);
-  box-shadow: 0 0 15px var(--accent-glow);
-}
-.vol-btn:active { transform: scale(0.95); }
+.vol-btn:hover { background: var(--border); }
+.vol-btn:active { box-shadow: 0 0 0 3px var(--accent-glow); }
 .vol-display {
   flex: 1;
   text-align: center;
-  font-family: var(--font-mono);
-  font-size: 1.25rem;
+  font-size: 1rem;
   font-weight: 700;
-  color: var(--text);
+  color: var(--accent);
   background: var(--surface2);
   border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: .6rem;
-  min-width: 3rem;
-  box-shadow: inset 0 2px 10px rgba(0,0,0,.2);
+  border-radius: 8px;
+  padding: .3rem .4rem;
+  min-width: 2.5rem;
 }
 
 /* status chip */
 .status-chip {
-  font-family: var(--font-mono);
-  font-size: .85rem;
-  padding: .3rem .8rem;
+  font-size: .75rem;
+  padding: .2rem .65rem;
   border-radius: 999px;
   background: var(--surface2);
   color: var(--text-muted);
   display: inline-block;
   width: fit-content;
-  border: 1px solid var(--border);
 }
 .status-chip.on {
   background: var(--on-glow);
   color: var(--on-green);
-  border-color: var(--on-green);
   font-weight: 600;
-  box-shadow: 0 0 10px var(--on-glow);
 }
 
 /* ── Emoji picker ──────────────────────────────────────────────────────── */
 .emoji-picker {
   position: fixed;
   background: var(--surface);
-  backdrop-filter: blur(30px);
-  -webkit-backdrop-filter: blur(30px);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 1rem;
+  padding: .75rem;
   display: grid;
   grid-template-columns: repeat(6, 1fr);
-  gap: .5rem;
-  box-shadow: 0 10px 40px rgba(0,0,0,.8), 0 0 20px var(--border-glow);
+  gap: .35rem;
+  box-shadow: var(--shadow);
   z-index: 200;
-  width: 280px;
+  width: 220px;
 }
 .emoji-picker.hidden { display: none; }
 .emoji-opt {
-  font-size: 1.6rem;
+  font-size: 1.35rem;
   text-align: center;
-  padding: .4rem;
-  border-radius: 12px;
+  padding: .25rem;
+  border-radius: 6px;
   cursor: pointer;
-  transition: all var(--transition);
+  transition: background var(--transition);
 }
-.emoji-opt:hover { 
-  background: var(--accent); 
-  transform: scale(1.1);
-}
+.emoji-opt:hover { background: var(--surface2); }
 
 /* ── Source modal ──────────────────────────────────────────────────────── */
 .modal-overlay {
   position: fixed; inset: 0;
-  background: rgba(10,10,15,.8);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  background: rgba(0,0,0,.55);
   display: flex; align-items: center; justify-content: center;
   z-index: 300;
   padding: 1rem;
-  transition: opacity var(--transition);
 }
-.modal-overlay.hidden { display: none; opacity: 0; }
+.modal-overlay.hidden { display: none; }
 .modal {
   background: var(--surface);
-  border: 1px solid var(--accent);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 2rem;
+  padding: 1.5rem;
   width: 100%;
-  max-width: 450px;
-  box-shadow: 0 20px 50px rgba(0,0,0,.8), 0 0 30px var(--accent-glow);
+  max-width: 400px;
+  box-shadow: var(--shadow);
 }
-.modal h2 { margin-bottom: 1.5rem; font-size: 1.4rem; font-family: var(--font-mono); }
-.modal-row { display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem; }
-.modal-row label { font-family: var(--font-mono); font-size: .9rem; color: var(--text-muted); width: 5.5rem; flex-shrink: 0; }
+.modal h2 { margin-bottom: 1rem; font-size: 1.1rem; }
+.modal-row { display: flex; align-items: center; gap: .75rem; margin-bottom: .75rem; }
+.modal-row label { font-size: .85rem; color: var(--text-muted); width: 5rem; flex-shrink: 0; }
 .modal-input {
   flex: 1;
   background: var(--surface2);
   border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: .6rem .8rem;
+  border-radius: 8px;
+  padding: .45rem .65rem;
   color: var(--text);
-  font-family: var(--font-mono);
-  font-size: 1rem;
+  font-size: .9rem;
   outline: none;
-  transition: all var(--transition);
 }
-.modal-input:focus { border-color: var(--accent); box-shadow: 0 0 10px var(--accent-glow); }
-.modal-actions { display: flex; gap: 1rem; justify-content: flex-end; margin-top: 1.5rem; }
+.modal-input:focus { border-color: var(--accent); }
+.modal-actions { display: flex; gap: .75rem; justify-content: flex-end; margin-top: 1rem; }
 .btn-primary {
-  padding: .7rem 1.5rem;
-  border-radius: 12px;
+  padding: .5rem 1.2rem;
+  border-radius: 8px;
   background: var(--accent);
   color: #fff;
-  font-weight: 700;
-  font-family: var(--font-mono);
-  font-size: 1rem;
-  transition: all var(--transition);
-  box-shadow: 0 0 15px var(--accent-glow);
+  font-weight: 600;
+  font-size: .9rem;
+  transition: opacity var(--transition);
 }
-.btn-primary:hover { opacity: .9; transform: translateY(-2px); }
+.btn-primary:hover { opacity: .85; }
 .btn-secondary {
-  padding: .7rem 1.5rem;
-  border-radius: 12px;
+  padding: .5rem 1.2rem;
+  border-radius: 8px;
   background: var(--surface2);
   border: 1px solid var(--border);
-  font-family: var(--font-mono);
-  font-size: 1rem;
-  transition: all var(--transition);
+  font-size: .9rem;
 }
 .btn-secondary:hover { background: var(--border); }
 
 /* ── Offline banner ────────────────────────────────────────────────────── */
 #offline-banner {
-  background: rgba(245, 158, 11, 0.9);
+  background: #f59e0b;
   color: #000;
   text-align: center;
-  padding: .6rem;
-  font-family: var(--font-mono);
-  font-size: .9rem;
-  font-weight: 700;
+  padding: .4rem;
+  font-size: .85rem;
+  font-weight: 600;
   display: none;
-  backdrop-filter: blur(10px);
 }
 #offline-banner.visible { display: block; }
 </style>
@@ -440,9 +346,9 @@ header {
 
 // ── Constants ───────────────────────────────────────────────────────────────
 const EMOJI_LIST = [
-  '🏠','🍳','🛏️','🚿','💼','🚗','🛋️','💻','🌿','🎵',
-  '📺','🎸','🎹','🛁','🏋️','🌞','🌙','🍽️','🔊','🎤',
-  '🏡','🌊','🎮','📚','🎨','🌸','🧑‍🍳','🍕','☕','🛺','🪴','🎧'
+  '🛋️','🍳','🛏️','💻','🌿','🏠','🎵','📺','🎸','🎹',
+  '🛁','🏋️','🌞','🌙','🍽️','🔊','🎤','🏡','🛋️','🌊',
+  '🎮','📚','🎨','🌸','🧑‍🍳','🍕','☕','🛺','🪴','🎧'
 ];
 const ZONES       = [1, 2, 3, 4, 5, 6];
 const POLL_AMP_MS = 30_000;   // re-poll amp state every 30 s
@@ -543,16 +449,7 @@ function renderGrid() {
 }
 
 function buildCard(zone) {
-  const defaults = {
-    1: { name: 'Living', icon: '🏠' },
-    2: { name: 'Kitchen', icon: '🍳' },
-    3: { name: 'Bedroom', icon: '🛏️' },
-    4: { name: 'Bathroom', icon: '🚿' },
-    5: { name: 'Office', icon: '💼' },
-    6: { name: 'Garage', icon: '🚗' }
-  };
-  const def = defaults[zone] || { name: `Zone ${zone}`, icon: '🔊' };
-  const zCfg  = (cfg.zones || {})[zone] || def;
+  const zCfg  = (cfg.zones || {})[zone] || { name: `Zone ${zone}`, icon: '🔊' };
   const state = ampState[zone] || { power: false, source: 1, volume: 0 };
 
   const card = document.createElement('div');
@@ -565,13 +462,13 @@ function buildCard(zone) {
       <input class="zone-name-input" id="name-${zone}" type="text" value="${escHtml(zCfg.name)}"
              aria-label="Zone name" maxlength="24">
       <button class="power-btn${state.power ? ' on' : ''}" data-zone="${zone}" id="power-${zone}"
-              title="Power toggle" aria-pressed="${state.power}">${state.power ? '⏽' : '⏻'}</button>
+              title="Power toggle" aria-pressed="${state.power}">⏻</button>
     </div>
     <select class="zone-source" id="src-${zone}" aria-label="Source">
       ${buildSourceOptions(state.source)}
     </select>
     <div class="vol-row">
-      <span class="vol-label">VOL</span>
+      <span class="vol-label">🔈</span>
       <button class="vol-btn" id="vold-${zone}" aria-label="Volume down">−</button>
       <div class="vol-display" id="volnum-${zone}">${state.volume}</div>
       <button class="vol-btn" id="volu-${zone}" aria-label="Volume up">+</button>
@@ -595,7 +492,7 @@ function buildCard(zone) {
   // ── Zone name ─────────────────────────────────────────────────────────────
   const nameInput = card.querySelector(`#name-${zone}`);
   const saveName = () => {
-    const name = nameInput.value.trim() || def.name;
+    const name = nameInput.value.trim() || `Zone ${zone}`;
     if (!cfg.zones) cfg.zones = {};
     if (!cfg.zones[zone]) cfg.zones[zone] = {};
     cfg.zones[zone].name = name;
@@ -667,7 +564,6 @@ function applyZoneState(zone, state) {
   card.classList.toggle('powered', state.power);
   powerBtn.classList.toggle('on', state.power);
   powerBtn.setAttribute('aria-pressed', state.power);
-  powerBtn.textContent = state.power ? '⏽' : '⏻';
 
   if (srcSel) srcSel.value = state.source;
   if (volSlide) volSlide.value = state.volume;
@@ -724,7 +620,7 @@ function openEmojiPicker(zone, anchor) {
   let left = rect.left   + window.scrollX;
 
   // Keep picker within viewport
-  const pw = 280;
+  const pw = 220;
   if (left + pw > window.innerWidth) left = window.innerWidth - pw - 8;
   if (top  + 200 > window.innerHeight + window.scrollY) top = rect.top + window.scrollY - 210;
 
